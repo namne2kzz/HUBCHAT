@@ -1,0 +1,43 @@
+# HUB CI template (backend microservices). Xem bản dùng thực tế ở .github/workflows/ci.yml (root).
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-test:
+    name: Build & Test (.NET 10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Restore
+        run: dotnet restore HUB.slnx
+      - name: Build
+        run: dotnet build HUB.slnx --configuration Release --no-restore
+      - name: Test
+        run: dotnet test HUB.slnx --configuration Release --no-build --verbosity normal
+
+  docker-images:
+    name: Build images
+    needs: build-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        service:
+          - { name: gateway,           dockerfile: src/Gateway/HUB.Gateway/Dockerfile }
+          - { name: dashboard-gateway, dockerfile: src/Services/DashboardGateway/HUB.DashboardGateway/Dockerfile }
+          - { name: chat,              dockerfile: src/Services/Chat/HUB.Chat.WebApi/Dockerfile }
+          - { name: realtime,          dockerfile: src/Services/Realtime/HUB.Realtime.WebApi/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ${{ matrix.service.name }}
+        run: docker build -f ${{ matrix.service.dockerfile }} -t hub-${{ matrix.service.name }}:${{ github.sha }} .
+      # TODO: Trivy scan + push GHCR + deploy over SSH (docker compose pull && up -d)

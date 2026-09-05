@@ -1,0 +1,46 @@
+<Solution>
+  <Folder Name="/solution/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="docker-compose.yml" />
+    <File Path=".env.example" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/HUB.Shared.Contracts/HUB.Shared.Contracts.csproj" />
+    <Project Path="src/BuildingBlocks/HUB.Shared.Auth/HUB.Shared.Auth.csproj" />
+    <Project Path="src/BuildingBlocks/HUB.Shared.Messaging/HUB.Shared.Messaging.csproj" />
+    <Project Path="src/BuildingBlocks/HUB.Shared.Observability/HUB.Shared.Observability.csproj" />
+  </Folder>
+  <Folder Name="/src/Gateway/">
+    <Project Path="src/Gateway/HUB.Gateway/HUB.Gateway.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/">
+    <Project Path="src/Services/DashboardGateway/HUB.DashboardGateway/HUB.DashboardGateway.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Chat/">
+    <Project Path="src/Services/Chat/HUB.Chat.Domain/HUB.Chat.Domain.csproj" />
+    <Project Path="src/Services/Chat/HUB.Chat.Application/HUB.Chat.Application.csproj" />
+    <Project Path="src/Services/Chat/HUB.Chat.Infrastructure/HUB.Chat.Infrastructure.csproj" />
+    <Project Path="src/Services/Chat/HUB.Chat.WebApi/HUB.Chat.WebApi.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Realtime/">
+    <Project Path="src/Services/Realtime/HUB.Realtime.WebApi/HUB.Realtime.WebApi.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Notification/">
+    <Project Path="src/Services/Notification/HUB.Notification.Domain/HUB.Notification.Domain.csproj" />
+    <Project Path="src/Services/Notification/HUB.Notification.Application/HUB.Notification.Application.csproj" />
+    <Project Path="src/Services/Notification/HUB.Notification.Infrastructure/HUB.Notification.Infrastructure.csproj" />
+    <Project Path="src/Services/Notification/HUB.Notification.WebApi/HUB.Notification.WebApi.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Media/">
+    <Project Path="src/Services/Media/HUB.Media.Domain/HUB.Media.Domain.csproj" />
+    <Project Path="src/Services/Media/HUB.Media.Application/HUB.Media.Application.csproj" />
+    <Project Path="src/Services/Media/HUB.Media.Infrastructure/HUB.Media.Infrastructure.csproj" />
+    <Project Path="src/Services/Media/HUB.Media.WebApi/HUB.Media.WebApi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HUB.DashboardGateway.Tests/HUB.DashboardGateway.Tests.csproj" />
+    <Project Path="tests/HUB.Chat.Domain.Tests/HUB.Chat.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

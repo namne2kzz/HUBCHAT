@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>HUB.Notification.WebApi</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\HUB.Notification.Application\HUB.Notification.Application.csproj" />
+    <ProjectReference Include="..\HUB.Notification.Infrastructure\HUB.Notification.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HUB.Shared.Auth\HUB.Shared.Auth.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HUB.Shared.Observability\HUB.Shared.Observability.csproj" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

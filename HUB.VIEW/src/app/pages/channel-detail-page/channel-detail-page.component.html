@@ -1,0 +1,201 @@
+<div class="flex flex-col h-full">
+
+ @if (!hasSelection()) {
+  <!-- ── Empty state: no channel selected ─────────────────────────────────── -->
+  <div class="flex flex-1 flex-col items-center justify-center text-center px-6" style="color:var(--text-muted)">
+    <div style="font-size:2.25rem;opacity:0.7">💬</div>
+    <p class="mt-3 text-sm font-semibold" style="color:var(--text-primary)">No channel selected</p>
+    <p class="mt-1 text-xs">Pick a channel or a direct message from the sidebar to start chatting.</p>
+  </div>
+ } @else {
+
+  <!-- ── Topbar ─────────────────────────────────────────────────────────── -->
+  @if (channel(); as ch) {
+    <div class="topbar">
+      <div class="chan-hash" style="width:30px;height:30px;font-size:14px">
+        @switch (ch.type) {
+          @case (ChannelType.Private) {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          }
+          @case (ChannelType.GroupDm) {
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          }
+          @case (ChannelType.Dm) {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          }
+          @default { # }
+        }
+      </div>
+      <div class="flex flex-col min-w-0">
+        <span class="font-semibold text-strong text-sm truncate">{{ channelTitle() }}</span>
+        @if (ch.topic) {
+          <span class="text-xs truncate" style="color:var(--text-muted)">{{ ch.topic }}</span>
+        } @else if (ch.linkExternalKey) {
+          <span class="text-xs chan-link truncate">🔗 Linked to {{ ch.linkExternalKey }}</span>
+        }
+      </div>
+
+      <div class="topbar-actions">
+        <button class="conn-pill" (click)="openInfo('members')" title="View members">
+          {{ ch.memberCount }} member{{ ch.memberCount !== 1 ? 's' : '' }}
+        </button>
+
+        <!-- Search toggle -->
+        <button
+          class="icon-btn"
+          [class.is-active]="searchMode()"
+          (click)="toggleSearch()"
+          title="Search messages">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+        </button>
+
+        <!-- Channel info ("…") — opens the About/Members modal -->
+        <button
+          class="icon-btn"
+          [class.is-active]="infoOpen()"
+          (click)="openInfo('about')"
+          title="Channel details">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Search input bar (shown in search mode) ─────────────────────── -->
+    @if (searchMode()) {
+      <div class="channel-search-bar">
+        <svg class="channel-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input
+          type="text"
+          [value]="searchQuery()"
+          (input)="onSearchInput($event)"
+          placeholder="Search in {{ channelTitle() }}…"
+          class="channel-search-input"
+          autofocus />
+        @if (searchQuery()) {
+          <span class="channel-search-count">
+            {{ searchResults().length }} result{{ searchResults().length !== 1 ? 's' : '' }}
+          </span>
+        }
+        <button class="icon-btn" (click)="toggleSearch()" title="Close search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    }
+  }
+
+  <!-- ── Body: messages + right panel ───────────────────────────────────── -->
+  <div class="channel-body">
+
+    <!-- Main chat area — always shows ALL messages so scroll-to-message works -->
+    <div class="message-area">
+      @if (loading()) {
+        <div class="flex-1 flex items-center justify-center"><div class="spinner"></div></div>
+      } @else {
+        <app-message-list
+          [messages]="messages()"
+          [authors]="authors()"
+          [hasMore]="hasMore()"
+          [currentUserId]="currentUserId()"
+          [highlightedId]="highlightedMessageId()"
+          (loadMore)="loadMore()"
+          class="flex-1 overflow-y-auto" />
+      }
+
+      <app-typing-indicator
+        [channelId]="channelId"
+        [currentUserId]="currentUserId()" />
+
+      @if (canPost()) {
+        <app-message-input
+          [channelName]="channelTitle()"
+          (send)="sendMessage($event)"
+          (typing)="onTyping()"
+          class="shrink-0" />
+      } @else if (channel()) {
+        <div class="join-bar shrink-0">
+          <div class="join-bar-text">
+            <span class="join-bar-title">You're viewing #{{ channelTitle() }}</span>
+            <span class="join-bar-sub">Join this channel to send messages and react.</span>
+          </div>
+          <button class="join-btn" (click)="join()" [disabled]="joining()">
+            @if (joining()) {
+              <span class="spinner" style="width:13px;height:13px;border-width:1.5px"></span> Joining…
+            } @else {
+              Join channel
+            }
+          </button>
+        </div>
+      }
+    </div>
+
+    <!-- ── Right panel ─────────────────────────────────────────────────── -->
+
+    <!-- Search results panel (shown when search is active with a query) -->
+    @if (searchMode() && searchQuery()) {
+      <div class="search-results-panel">
+
+        <div class="sr-header">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--text-muted)">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <span class="sr-count">{{ searchResults().length }} result{{ searchResults().length !== 1 ? 's' : '' }}</span>
+          <span class="sr-query">"{{ searchQuery() }}"</span>
+        </div>
+
+        <div class="sr-list">
+          @if (searchResults().length === 0) {
+            <p class="sr-empty">No messages match.</p>
+          }
+
+          @for (msg of searchResults(); track msg.id) {
+            <button class="sr-item" (click)="scrollToMessage(msg.id)" type="button">
+              <div class="sr-item-top">
+                <span class="sr-author">{{ authorName(msg.authorId) }}</span>
+                <span class="sr-time">{{ msg.createdAt | date:'MMM d, HH:mm' }}</span>
+              </div>
+              @if (highlightParts(msg.body, searchQuery()); as parts) {
+                <p class="sr-body">
+                  <span>{{ parts.pre }}</span><!-- no whitespace
+                  --><mark class="sr-mark">{{ parts.match }}</mark><!-- no whitespace
+                  --><span>{{ parts.post }}</span>
+                </p>
+              } @else {
+                <p class="sr-body">{{ msg.body }}</p>
+              }
+            </button>
+          }
+        </div>
+
+      </div>
+
+    }
+
+  </div>
+
+  <!-- ── Channel info modal ("…") ──────────────────────────────────────────── -->
+  @if (infoOpen() && channel(); as ch) {
+    <app-channel-info-panel
+      [channel]="ch"
+      [channelId]="channelId"
+      [currentUserId]="currentUserId()"
+      [initialTab]="infoTab()"
+      (close)="infoOpen.set(false)"
+      (memberCountChanged)="onMemberCount($event)"
+      (topicChanged)="onTopicChanged($event)"
+      (left)="onChannelLeft()"
+      (joined)="onChannelJoined()"
+      (visibilityChanged)="onVisibilityChanged($event)"
+      (ownershipTransferred)="onOwnershipTransferred()" />
+  }
+
+ }
+
+</div>

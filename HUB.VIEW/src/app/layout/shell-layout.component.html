@@ -1,0 +1,405 @@
+<div class="app-shell">
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       RAIL — narrow icon strip (3 main tabs)
+       ═════════════════════════════════════════════════════════════════════ -->
+  <nav class="rail" aria-label="Main navigation">
+
+    <div class="rail-top">
+      <div class="rail-ws-icon" [title]="workspaceName()">{{ workspaceName().charAt(0) }}</div>
+      <div class="rail-divider"></div>
+
+      <!-- Channels -->
+      <button class="rail-btn" [class.is-active]="activeTab() === 'channels'"
+              (click)="setTab('channels')" title="Channels">
+        <svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+        </svg>
+        @if (totalUnread() > 0) {
+          <span class="rail-badge">{{ totalUnread() > 99 ? '99+' : totalUnread() }}</span>
+        }
+      </button>
+
+      <!-- Notifications -->
+      <button class="rail-btn" [class.is-active]="activeTab() === 'notifications'"
+              (click)="setTab('notifications')" title="Notifications">
+        <svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 106 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 01-3.46 0"/>
+        </svg>
+        @if (notification.unreadCount() > 0) {
+          <span class="rail-badge">{{ notification.unreadCount() > 99 ? '99+' : notification.unreadCount() }}</span>
+        }
+      </button>
+
+      <!-- Settings -->
+      <button class="rail-btn" [class.is-active]="activeTab() === 'settings'"
+              (click)="setTab('settings')" title="Settings">
+        <svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- User avatar at bottom of rail -->
+    <div class="rail-bottom">
+      @if (auth.currentUser(); as user) {
+        <div class="rail-user-wrap">
+          <div class="rail-avatar">{{ user.fullName.charAt(0).toUpperCase() }}</div>
+          <span class="presence-dot presence-dot-sm" [ngClass]="ownStatusDot()"></span>
+        </div>
+      }
+    </div>
+
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       SUB-SIDEBAR — context panel for the active tab
+       ═════════════════════════════════════════════════════════════════════ -->
+  <aside class="sub-sidebar">
+
+    @switch (activeTab()) {
+
+      <!-- ── CHANNELS TAB ────────────────────────────────────────────── -->
+      @case ('channels') {
+
+        <!-- Workspace header -->
+        <div class="sub-head">
+          <p class="sub-ws-name">{{ workspaceName() }}</p>
+          <p class="sub-ws-sub">Nexus HUB</p>
+        </div>
+
+        <!-- Global search -->
+        <div class="sub-search-wrap">
+          <div class="sub-search-box" [class.sub-search-active]="searchQuery()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted);flex-shrink:0">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input
+              type="text"
+              [value]="searchQuery()"
+              (input)="onSearchInput($event)"
+              placeholder="Search channels, DMs…"
+              class="sub-search-input" />
+            @if (searchQuery()) {
+              <button class="sub-search-clear" (click)="clearSearch()" title="Clear">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            }
+          </div>
+        </div>
+
+        <div class="sub-scroll">
+
+          <!-- CHANNELS grouped by repository (collapsible) -->
+          @if (loadingChannels()) {
+            <div class="sub-loading"><div class="spinner" style="width:14px;height:14px;border-width:1.5px"></div></div>
+          }
+
+          @for (group of repoGroups(); track group.repo.repositoryId) {
+            <div class="sub-section">
+              <div class="section-head repo-head" (click)="toggleRepo(group.repo.repositoryId)">
+                <svg class="repo-caret" [class.is-collapsed]="isRepoCollapsed(group.repo.repositoryId)"
+                     width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 9l6 6 6-6"/>
+                </svg>
+                <span class="section-label repo-label">{{ group.repo.repositoryName }}</span>
+                @if (canCreateChannelForRepo(group.repo.repositoryId)) {
+                  <button (click)="openCreateDialog(group.repo.repositoryId); $event.stopPropagation()"
+                          class="icon-btn-xs" title="New channel" aria-label="New channel">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                    </svg>
+                  </button>
+                }
+              </div>
+
+              @if (!isRepoCollapsed(group.repo.repositoryId)) {
+                @for (ch of group.channels; track ch.id) {
+                  <button
+                    (click)="navigate(ch)"
+                    class="nav-item"
+                    [class.is-active]="selectedChannelId() === ch.id"
+                    [class.has-unread]="unreadMap()[ch.id] > 0"
+                    [title]="ch.name">
+                    <span class="ch-hash">
+                      @switch (ch.type) {
+                        @case (ChannelType.Private) {
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" title="Private channel">
+                            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+                          </svg>
+                        }
+                        @case (ChannelType.GroupDm) {
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" title="Group">
+                            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+                          </svg>
+                        }
+                        @default { # }
+                      }
+                    </span>
+                    <span class="nav-item-text">{{ ch.name }}</span>
+                    @if (isTyping(ch.id)) {
+                      <span class="typing-hint">typing…</span>
+                    } @else {
+                      @if (unreadMap()[ch.id]; as n) {
+                        <span class="nav-badge">{{ n > 99 ? '99+' : n }}</span>
+                      }
+                    }
+                  </button>
+                } @empty {
+                  <p class="sub-empty">No channels.</p>
+                }
+              }
+            </div>
+          }
+
+          @if (!loadingChannels() && repoGroups().length === 0) {
+            <p class="sub-empty">{{ searchQuery() ? 'No match.' : 'No channels yet.' }}</p>
+          }
+
+          <!-- DIRECT MESSAGES — only existing DM channels, sorted online + recency -->
+          @if (filteredDmChannels().length > 0 || (dmChannels().length > 0 && searchQuery())) {
+            <div class="sub-section">
+              <div class="section-head">
+                <span class="section-label">Direct Messages</span>
+              </div>
+              @for (ch of filteredDmChannels(); track ch.id) {
+                <button
+                  (click)="navigate(ch)"
+                  class="nav-item"
+                  [class.is-active]="selectedChannelId() === ch.id"
+                  [title]="ch.name">
+                  <div class="dm-avatar-wrap">
+                    @if (ch.type === ChannelType.GroupDm) {
+                      <div class="dm-avatar dm-avatar-group" title="Group message">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+                        </svg>
+                      </div>
+                    } @else {
+                      <div class="dm-avatar">{{ dmName(ch).charAt(0).toUpperCase() }}</div>
+                      <span class="presence-dot presence-dot-sm" [ngClass]="presenceDot(dmUserId(ch))"></span>
+                    }
+                  </div>
+                  <span class="nav-item-text" [class.has-unread]="unreadMap()[ch.id] > 0">{{ dmName(ch) }}</span>
+                  @if (isTyping(ch.id)) {
+                    <span class="typing-hint">typing…</span>
+                  } @else {
+                    @if (unreadMap()[ch.id]; as n) {
+                      <span class="nav-badge">{{ n > 99 ? '99+' : n }}</span>
+                    }
+                  }
+                </button>
+              }
+              @if (searchQuery() && filteredDmChannels().length === 0) {
+                <p class="sub-empty">No match.</p>
+              }
+            </div>
+          }
+
+          <!-- ONLINE — org members currently online (hidden while searching) -->
+          @if (!searchQuery() && onlinePeople().length > 0) {
+            <div class="sub-section">
+              <div class="section-head">
+                <span class="section-label">Online — {{ onlinePeople().length }}</span>
+              </div>
+              @for (member of onlinePeople(); track member.id) {
+                <button
+                  (click)="navigateToMember(member)"
+                  class="nav-item"
+                  [title]="member.name + ' · ' + member.email"
+                  [disabled]="openingDmForId() === member.id">
+                  <div class="dm-avatar-wrap">
+                    <div class="dm-avatar">{{ member.name.charAt(0).toUpperCase() }}</div>
+                    <span class="presence-dot presence-dot-sm presence-online"></span>
+                  </div>
+                  <span class="nav-item-text">{{ member.name }}</span>
+                  @if (openingDmForId() === member.id) {
+                    <div class="spinner" style="width:12px;height:12px;border-width:1.5px;flex-shrink:0;margin-left:auto"></div>
+                  }
+                </button>
+              }
+            </div>
+          }
+
+          <!-- PEOPLE — all workspace members matching the search query -->
+          @if (filteredMembers().length > 0) {
+            <div class="sub-section">
+              <div class="section-head">
+                <span class="section-label">People</span>
+              </div>
+              @for (member of filteredMembers(); track member.id) {
+                <button
+                  (click)="navigateToMember(member)"
+                  class="nav-item"
+                  [title]="member.name + ' · ' + member.email"
+                  [disabled]="openingDmForId() === member.id">
+                  <div class="dm-avatar-wrap">
+                    <div class="dm-avatar">{{ member.name.charAt(0).toUpperCase() }}</div>
+                    <span class="presence-dot presence-dot-sm" [ngClass]="presenceDot(member.id)"></span>
+                  </div>
+                  <span class="nav-item-text">{{ member.name }}</span>
+                  @if (openingDmForId() === member.id) {
+                    <div class="spinner" style="width:12px;height:12px;border-width:1.5px;flex-shrink:0;margin-left:auto"></div>
+                  }
+                </button>
+              }
+            </div>
+          }
+
+        </div><!-- /sub-scroll -->
+      }
+
+      <!-- ── NOTIFICATIONS TAB ──────────────────────────────────────────── -->
+      @case ('notifications') {
+        <div class="sub-head sub-head--flex">
+          <p class="sub-ws-name">Notifications</p>
+          @if (notification.unreadCount() > 0) {
+            <button class="link-accent text-xs" (click)="markAllNotificationsRead()">Mark all read</button>
+          }
+        </div>
+
+        <div class="sub-scroll">
+          @if (loadingNotifs()) {
+            <div class="sub-loading"><div class="spinner" style="width:14px;height:14px;border-width:1.5px"></div></div>
+          } @else if (notification.notifications().length === 0) {
+            <p class="sub-empty" style="margin-top:20px;text-align:center">No notifications.</p>
+          } @else {
+            @for (n of notification.notifications(); track n.id) {
+              <div class="notif-row" [class.is-unread]="!n.isRead"
+                   (click)="openNotification(n)" role="button" tabindex="0"
+                   (keydown.enter)="openNotification(n)">
+                <div class="notif-dot" [style.background]="n.isRead ? 'transparent' : 'var(--accent)'"></div>
+                <div class="notif-body">
+                  <p class="notif-kind">{{ typeLabel(n.type) }}</p>
+                  <p class="notif-preview">{{ n.preview }}</p>
+                  <p class="notif-time">{{ n.createdAt | date:'short' }}</p>
+                </div>
+              </div>
+            }
+          }
+        </div>
+      }
+
+      <!-- ── SETTINGS TAB ───────────────────────────────────────────────── -->
+      @case ('settings') {
+        <div class="sub-head"><p class="sub-ws-name">Settings</p></div>
+
+        <div class="sub-scroll">
+          @if (auth.currentUser(); as user) {
+            <div class="settings-profile-card">
+              <div class="settings-avatar-wrap">
+                <div class="settings-avatar">{{ user.fullName.charAt(0).toUpperCase() }}</div>
+                <span class="presence-dot presence-dot-sm" [ngClass]="ownStatusDot()"></span>
+              </div>
+              <div>
+                <p class="settings-name">{{ user.fullName }}</p>
+                <p class="settings-email">{{ user.email }}</p>
+              </div>
+            </div>
+          }
+
+          <!-- Presence status -->
+          <div class="settings-section">
+            <p class="section-label" style="padding:0 10px;margin-bottom:6px">Status</p>
+            @for (opt of statusOptions; track opt.value) {
+              <button class="status-option" [class.is-selected]="settings.status() === opt.value"
+                      (click)="setStatus(opt.value)">
+                <span class="status-dot" [class.presence-online]="opt.dot === 'presence-online'"
+                      [class.presence-away]="opt.dot === 'presence-away'"
+                      [class.presence-dnd]="opt.dot === 'presence-dnd'"></span>
+                <span class="status-option-label">{{ opt.label }}</span>
+                @if (settings.status() === opt.value) {
+                  <svg class="status-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                }
+              </button>
+            }
+            @if (settings.status() === 'DoNotDisturb') {
+              <p class="settings-hint">🔕 Notifications are silenced while in Do Not Disturb.</p>
+            }
+          </div>
+
+          <!-- Quiet hours (notification schedule) -->
+          <div class="settings-section">
+            <div class="settings-row">
+              <span class="settings-row-label">Quiet hours</span>
+              <label class="switch">
+                <input type="checkbox" [checked]="settings.quietHours().enabled" (change)="onQuietToggle($event)" />
+                <span class="switch-track"></span>
+              </label>
+            </div>
+            <p class="settings-sub">Mute notification sound &amp; popups during a daily window.</p>
+            @if (settings.quietHours().enabled) {
+              <div class="quiet-times">
+                <label class="quiet-time">
+                  <span>From</span>
+                  <input type="time" [value]="settings.quietHours().start" (change)="onQuietTime('start', $event)" />
+                </label>
+                <label class="quiet-time">
+                  <span>To</span>
+                  <input type="time" [value]="settings.quietHours().end" (change)="onQuietTime('end', $event)" />
+                </label>
+              </div>
+              @if (settings.muted() && settings.status() !== 'DoNotDisturb') {
+                <p class="settings-hint">🌙 Quiet hours are active right now.</p>
+              }
+            }
+          </div>
+
+          <!-- Appearance -->
+          <div class="settings-section">
+            <span class="section-label">Appearance</span>
+            <div class="settings-row">
+              <span class="settings-row-label">Dark theme</span>
+              <label class="switch">
+                <input type="checkbox" [checked]="theme.theme() === 'dark'" (change)="theme.toggle()">
+                <span class="switch-track"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Connection -->
+          <div class="settings-section">
+            <div class="settings-row">
+              <span class="settings-row-label">Connection</span>
+              <span class="settings-row-value"
+                    [style.color]="realtime.connectionState() === 'connected' ? 'var(--success)' : 'var(--text-muted)'">
+                {{ realtime.connectionState() === 'connected' ? 'Connected' : 'Disconnected' }}
+              </span>
+            </div>
+          </div>
+
+          <div class="settings-section" style="margin-top:auto">
+            <button (click)="logout()" class="settings-logout-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+              </svg>
+              Sign out
+            </button>
+          </div>
+        </div>
+      }
+
+    }<!-- /@switch -->
+
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       MAIN CONTENT
+       ═════════════════════════════════════════════════════════════════════ -->
+  <main class="main-col"><router-outlet /></main>
+
+</div>
+
+<!-- Create Channel Dialog -->
+@if (createDialogOpen() && createChannelRepoId()) {
+  <app-create-channel-dialog
+    [workspaceId]="createChannelRepoId()"
+    (created)="onChannelCreated($event)"
+    (close)="createDialogOpen.set(false)" />
+}
+
+<!-- App-wide confirm dialog (rendered on demand by ConfirmDialogService) -->
+<app-confirm-dialog />

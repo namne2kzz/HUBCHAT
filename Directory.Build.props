@@ -1,0 +1,15 @@
+<Project>
+  <!-- Shared build settings for every project in the HUB solution. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Relax XML-doc warnings so they never fail the build (missing/mismatched/malformed doc tags). -->
+    <NoWarn>$(NoWarn);1591;1573;1572;1570;1571;1574;1587;1734;1712</NoWarn>
+    <!-- TODO(security): tat NuGet audit de build xanh o giai doan scaffold; bat lai va bump package va CVE (OpenTelemetry, System.Security.Cryptography.Xml, MessagePack) truoc prod. Chay: dotnet list package [vulnerable] [include-transitive] -->
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+</Project>

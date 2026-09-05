@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>HUB.Notification.Application</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MediatR" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\HUB.Notification.Domain\HUB.Notification.Domain.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HUB.Shared.Contracts\HUB.Shared.Contracts.csproj" />
+  </ItemGroup>
+</Project>

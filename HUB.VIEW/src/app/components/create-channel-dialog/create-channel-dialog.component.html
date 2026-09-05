@@ -1,0 +1,88 @@
+<div class="dialog-backdrop" (click)="onBackdrop($event)">
+  <div class="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="create-ch-title">
+
+    <!-- Header -->
+    <div class="dialog-header">
+      <h2 id="create-ch-title" class="dialog-title">Create a channel</h2>
+      <button (click)="close.emit()" class="icon-btn" aria-label="Close">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div class="dialog-body">
+
+      <!-- Type picker -->
+      <div class="type-row">
+        <button (click)="setType(ChannelType.Public)"
+                [class.type-btn-active]="type() === ChannelType.Public"
+                class="type-btn">
+          <span class="type-icon">🌐</span>
+          <div>
+            <p class="type-label">Public</p>
+            <p class="type-desc">Anyone in the workspace can join</p>
+          </div>
+        </button>
+        <button (click)="setType(ChannelType.Private)"
+                [class.type-btn-active]="type() === ChannelType.Private"
+                class="type-btn">
+          <span class="type-icon">🔒</span>
+          <div>
+            <p class="type-label">Private</p>
+            <p class="type-desc">Invite-only, hidden from non-members</p>
+          </div>
+        </button>
+      </div>
+
+      <!-- Name -->
+      <div class="field">
+        <label class="field-label" for="ch-name">Channel name *</label>
+        <div class="name-wrap">
+          <span class="name-hash">#</span>
+          <input
+            id="ch-name"
+            type="text"
+            [ngModel]="name()"
+            (ngModelChange)="name.set($event)"
+            placeholder="e.g. sprint-42, design-review"
+            maxlength="100"
+            class="field-input name-input"
+            autocomplete="off"
+            (keydown.enter)="submit()"
+          />
+        </div>
+      </div>
+
+      <!-- Topic -->
+      <div class="field">
+        <label class="field-label" for="ch-topic">Topic <span class="field-optional">(optional)</span></label>
+        <input
+          id="ch-topic"
+          type="text"
+          [ngModel]="topic()"
+          (ngModelChange)="topic.set($event)"
+          placeholder="What's this channel about?"
+          maxlength="500"
+          class="field-input"
+          (keydown.enter)="submit()"
+        />
+      </div>
+
+      @if (error()) {
+        <p class="dialog-error">{{ error() }}</p>
+      }
+    </div>
+
+    <!-- Footer -->
+    <div class="dialog-footer">
+      <button (click)="close.emit()" class="btn-secondary" [disabled]="loading()">Cancel</button>
+      <button (click)="submit()" class="btn-primary" [disabled]="loading() || !name().trim()">
+        @if (loading()) { <span class="spinner-sm"></span> }
+        Create channel
+      </button>
+    </div>
+
+  </div>
+</div>

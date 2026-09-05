@@ -1,0 +1,53 @@
+{
+  "version": "1.0",
+  "description": "HUB — Chat/Meeting microservices add-on for DASHBOARD. Claude Code config.",
+  "model": {
+    "default": "claude-sonnet-4-6",
+    "reasoning_tasks": "claude-opus-4-7",
+    "fast_edits": "claude-haiku-4-5-20251001"
+  },
+  "stack": {
+    "backend": {
+      "framework": ".NET 10",
+      "language": "C# 14",
+      "architecture": "Microservices + Clean Architecture + DDD + CQRS (per service)",
+      "orm": "Entity Framework Core 10",
+      "mediator": "MediatR 12",
+      "validation": "FluentValidation 11",
+      "messaging": "RabbitMQ via MassTransit (transactional outbox)",
+      "realtime": "SignalR + Redis backplane",
+      "gateway": "YARP reverse proxy",
+      "testing": "xUnit + NSubstitute + Shouldly + Testcontainers"
+    },
+    "frontend": {
+      "framework": "Angular 20 (planned — chưa scaffold, thêm ở phase có HUB.VIEW)",
+      "language": "TypeScript 5.x",
+      "state": "Angular Signals"
+    },
+    "database": {
+      "primary": "PostgreSQL 17 (database-per-service, 1 container)",
+      "cache": "Redis 7 (StackExchange.Redis)",
+      "objectStorage": "MinIO (S3-compatible)"
+    },
+    "deploy": {
+      "runtime": "Docker / docker-compose (self-host, no cloud managed)",
+      "observability": "OpenTelemetry → OTel Collector → Jaeger",
+      "ci": "GitHub Actions"
+    },
+    "integration": {
+      "sso": "Shared JWT (HMAC-SHA256) issued by DASHBOARD",
+      "data": "REST pull from DASHBOARD /internal/v1/* (service-token) + Redis cache"
+    }
+  },
+  "project_paths": {
+    "solution": "HUB.slnx",
+    "gateway": "src/Gateway/HUB.Gateway",
+    "buildingBlocks": "src/BuildingBlocks",
+    "services": "src/Services",
+    "tests": "tests",
+    "frontend": "HUB.VIEW/src/app (planned)"
+  },
+  "skills": ".claude/skills/<name>/SKILL.md",
+  "agents": ".claude/agents/<name>.md",
+  "histories": ".claude/histories/<feature>.dod.md"
+}

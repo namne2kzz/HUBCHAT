@@ -1,0 +1,33 @@
+<div class="page-wrap">
+
+  <div class="flex items-center justify-between mb-5">
+    <div>
+      <h2 class="page-title">Notifications</h2>
+      <p class="page-sub">{{ notifSvc.unreadCount() }} unread</p>
+    </div>
+    @if (notifSvc.unreadCount() > 0) {
+      <button (click)="markAllRead()" class="link-accent">Mark all read</button>
+    }
+  </div>
+
+  @if (loading()) {
+    <div class="flex items-center justify-center flex-1"><div class="spinner"></div></div>
+  } @else if (notifications().length === 0) {
+    <div class="flex-1 flex items-center justify-center"><p class="empty-note">No notifications.</p></div>
+  } @else {
+    <div class="space-y-0.5">
+      @for (n of notifications(); track n.id) {
+        <div (click)="open(n)" class="notif-row" [class.is-unread]="!n.isRead">
+          <div class="notif-dot"
+               [style.background]="n.isRead ? 'transparent' : 'var(--accent)'"></div>
+          <div class="flex-1 min-w-0">
+            <p class="notif-kind">{{ typeLabel(n.type) }}</p>
+            <p class="text-sm mt-0.5" style="color:var(--text-primary)">{{ n.preview }}</p>
+            <p class="text-xs mt-1" style="color:var(--text-muted)">{{ n.createdAt | date:'short' }}</p>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+</div>

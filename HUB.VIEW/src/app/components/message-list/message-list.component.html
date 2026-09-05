@@ -1,0 +1,113 @@
+<div class="bubble-list">
+
+  @if (hasMore()) {
+    <div class="bubble-load-more">
+      <button (click)="loadMore.emit()" class="load-more-btn">↑ Load older messages</button>
+    </div>
+  }
+
+  @for (row of rows(); track row.msg.id) {
+
+    <!-- ── Day separator ──────────────────────────────────────────────── -->
+    @if (row.dateLabel) {
+      <div class="bubble-date-sep"><span>{{ row.dateLabel }}</span></div>
+    }
+
+    <!-- ── OTHERS (left) ──────────────────────────────────────────────── -->
+    @if (!row.isOwn) {
+      <div class="bubble-row bubble-row-them animate-msg-in"
+           [attr.id]="'msg-' + row.msg.id"
+           [class.bubble-row-first]="row.showHeader"
+           [class.bubble-row-continued]="!row.showHeader"
+           [class.bubble-row-highlight]="highlightedId() === row.msg.id">
+
+        <!-- Avatar column: shown only on first message of a group -->
+        @if (row.showHeader) {
+          <div class="bub-avatar">{{ authorInitial(row.msg.authorId) }}</div>
+        } @else {
+          <div class="bub-avatar-gap"></div>
+        }
+
+        <!-- Content -->
+        <div class="bub-content bub-content-them">
+          @if (row.showHeader) {
+            <div class="bub-header">
+              <span class="bub-author">{{ authorName(row.msg.authorId) }}</span>
+              <span class="bub-ts">{{ row.msg.createdAt | date:'HH:mm' }}</span>
+            </div>
+          }
+          <div class="bubble bubble-them"
+               [class.bubble-first]="row.showHeader"
+               [class.bubble-continued]="!row.showHeader"
+               [class.bubble-last]="!row.isContinued"
+               [title]="row.msg.createdAt | date:'medium'"
+               [innerHTML]="row.html">
+          </div>
+          @if (!row.isContinued && row.msg.editedAt) {
+            <span class="bub-edited">edited</span>
+          }
+          @if (row.msg.reactions.length > 0) {
+            <div class="bub-reactions">
+              @for (r of row.msg.reactions; track r.emoji) {
+                <span class="reaction-chip">{{ r.emoji }}</span>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- ── OWN (right) ────────────────────────────────────────────────── -->
+    @if (row.isOwn) {
+      <div class="bubble-row bubble-row-me animate-msg-in"
+           [attr.id]="'msg-' + row.msg.id"
+           [class.bubble-row-first]="row.showHeader"
+           [class.bubble-row-continued]="!row.showHeader"
+           [class.bubble-row-highlight]="highlightedId() === row.msg.id">
+
+        <div class="bub-content bub-content-me">
+          @if (row.showHeader) {
+            <div class="bub-header bub-header-me">
+              <span class="bub-ts">{{ row.msg.createdAt | date:'HH:mm' }}</span>
+              <span class="bub-author bub-author-me">You</span>
+            </div>
+          }
+          <div class="bubble bubble-me"
+               [class.bubble-first]="row.showHeader"
+               [class.bubble-continued]="!row.showHeader"
+               [class.bubble-last]="!row.isContinued"
+               [title]="row.msg.createdAt | date:'medium'"
+               [innerHTML]="row.html">
+          </div>
+          @if (!row.isContinued && row.msg.editedAt) {
+            <span class="bub-edited bub-edited-me">edited</span>
+          }
+          @if (row.msg.reactions.length > 0) {
+            <div class="bub-reactions bub-reactions-me">
+              @for (r of row.msg.reactions; track r.emoji) {
+                <span class="reaction-chip">{{ r.emoji }}</span>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+  } @empty {
+    <div class="bubble-empty">
+      <div class="bubble-empty-icon">💬</div>
+      <p class="bubble-empty-title">No messages yet</p>
+      <p class="bubble-empty-sub">Be the first to say something.</p>
+    </div>
+  }
+
+  @if (!atBottom()) {
+    <button class="scroll-bottom-fab" (click)="scrollToBottom()" title="Jump to latest" aria-label="Jump to latest">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14M19 12l-7 7-7-7"/>
+      </svg>
+    </button>
+  }
+
+</div>

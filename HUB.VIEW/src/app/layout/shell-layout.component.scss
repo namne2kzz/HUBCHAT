@@ -1,0 +1,41 @@
+:host { display: block; height: 100%; }
+
+/* main-col as grid child — takes up the remaining column width */
+.main-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg-app);
+}
+
+/* ── Repo groups (collapsible) + typing + unread ─────────────────────────── */
+.repo-head {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.repo-caret {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+  color: var(--text-muted);
+}
+.repo-caret.is-collapsed { transform: rotate(-90deg); }
+.repo-label { flex: 1; min-width: 0; }
+
+.typing-hint {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-style: italic;
+  color: var(--accent-text);
+}
+
+/* Unread channels/DMs read as bold + brighter. */
+.nav-item.has-unread .nav-item-text,
+.nav-item-text.has-unread {
+  font-weight: 700;
+  color: var(--text-primary);
+}

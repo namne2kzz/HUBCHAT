@@ -1,0 +1,173 @@
+<!-- Scrollable member list -->
+<div class="members-panel">
+  <div class="members-header">
+    <span class="members-title">Members</span>
+  </div>
+
+  @if (loading()) {
+    <div class="members-loading">
+      <div class="spinner" style="width:20px;height:20px;border-width:1.5px"></div>
+    </div>
+  } @else if (error()) {
+    <p class="members-error">Could not load members.</p>
+  } @else {
+    <div class="members-list">
+      @for (row of members(); track row.dto.userId) {
+        <div class="member-row">
+          <!-- Avatar + presence dot -->
+          <div class="member-avatar-wrap">
+            <div class="avatar {{ avatarClass(row) }}" style="width:32px;height:32px;font-size:12px">
+              {{ initials(row) }}
+            </div>
+            <span
+              class="presence-dot"
+              [class.presence-online]="presence.getStatus(row.dto.userId) === 'Online'"
+              [class.presence-offline]="presence.getStatus(row.dto.userId) !== 'Online'"
+              [title]="presence.getStatus(row.dto.userId)">
+            </span>
+          </div>
+
+          <!-- Name + role -->
+          <div class="member-info">
+            <span class="member-name truncate">{{ displayName(row) }}</span>
+            @if (roleLabel(row.dto.role); as label) {
+              <span class="role-badge">{{ label }}</span>
+            }
+          </div>
+
+          <!-- Online label (hidden when manage controls are visible) -->
+          @if (!canManage()) {
+            <span class="member-status-text"
+                  [class.status-online]="presence.getStatus(row.dto.userId) === 'Online'">
+              {{ presence.getStatus(row.dto.userId) === 'Online' ? 'Online' : '' }}
+            </span>
+          }
+
+          <!-- Make-owner button — only the current owner sees it, on other non-owner members. -->
+          @if (canMakeOwner(row)) {
+            <button
+              class="member-owner-btn"
+              [disabled]="!!transferring()"
+              (click)="makeOwner(row)"
+              type="button"
+              title="Transfer ownership to this member">
+              @if (transferring() === row.dto.userId) {
+                <div class="spinner" style="width:11px;height:11px;border-width:1.5px"></div>
+              } @else {
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 16L3 8l5.5 4L12 4l3.5 8L21 8l-2 8H5zM5 20h14"/>
+                </svg>
+              }
+            </button>
+          }
+
+          <!-- Remove button — shown only when the caller can manage AND this row is removable
+               (hidden for the owner and for the caller themselves). -->
+          @if (canManage() && canRemoveRow(row)) {
+            <button
+              class="member-remove-btn"
+              [class.member-remove-spinning]="removing() === row.dto.userId"
+              [disabled]="!!removing()"
+              (click)="removeMember(row)"
+              type="button"
+              title="Remove member">
+              @if (removing() === row.dto.userId) {
+                <div class="spinner" style="width:11px;height:11px;border-width:1.5px"></div>
+              } @else {
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              }
+            </button>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>
+
+<!-- ── Add member footer (only shown when caller can manage) ─────────────── -->
+@if (canManage()) {
+  <div class="add-member-footer">
+
+    <!-- Toggle button -->
+    <button class="add-member-toggle" (click)="toggleAddMode()" type="button">
+      @if (!addMode()) {
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 4v16m8-8H4"/>
+        </svg>
+        Add member
+      } @else {
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+        Cancel
+      }
+    </button>
+
+    <!-- Picker (shown when addMode is true) -->
+    @if (addMode()) {
+      <div class="add-picker">
+
+        <!-- Search input -->
+        <div class="add-search-wrap">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+               style="flex-shrink:0;color:var(--text-muted)">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input
+            type="text"
+            [value]="addQuery()"
+            (input)="onAddQueryInput($event)"
+            placeholder="Search workspace members…"
+            class="add-search-input"
+            autofocus />
+        </div>
+
+        <!-- Candidate list -->
+        <div class="add-picker-list">
+          @if (loadingCandidates()) {
+            <div style="display:flex;justify-content:center;padding:12px">
+              <div class="spinner" style="width:16px;height:16px;border-width:1.5px"></div>
+            </div>
+          } @else if (candidates().length === 0) {
+            <p class="add-picker-empty">
+              {{ addQuery() ? 'No match.' : 'All workspace members are already in this channel.' }}
+            </p>
+          } @else {
+            @for (user of candidates(); track user.id) {
+              <button
+                class="add-picker-item"
+                (click)="addMember(user)"
+                [disabled]="!!adding()"
+                type="button">
+                <div class="avatar add-picker-avatar">
+                  {{ user.name.charAt(0).toUpperCase() }}
+                </div>
+                <div class="add-picker-info">
+                  <span class="add-picker-name">{{ user.name }}</span>
+                  <span class="add-picker-email">{{ user.email }}</span>
+                </div>
+                @if (adding() === user.id) {
+                  <div class="spinner" style="width:12px;height:12px;border-width:1.5px;flex-shrink:0;margin-left:auto"></div>
+                } @else {
+                  <svg class="add-picker-plus" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <path d="M12 4v16m8-8H4"/>
+                  </svg>
+                }
+              </button>
+            }
+          }
+        </div>
+
+      </div>
+    }
+
+  </div>
+}

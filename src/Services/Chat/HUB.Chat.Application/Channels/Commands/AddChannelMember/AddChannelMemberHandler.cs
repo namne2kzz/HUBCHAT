@@ -1,0 +1,34 @@
+using HUB.Chat.Application.Channels.DTOs;
+using HUB.Chat.Application.Common.Exceptions;
+using HUB.Chat.Application.Common.Interfaces;
+using HUB.Chat.Domain.Enums;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+
+namespace HUB.Chat.Application.Channels.Commands.AddChannelMember;
+
+/// <summary>Handles <see cref="AddChannelMemberCommand"/>: idempotently adds a member to a channel.</summary>
+/// <param name="db">Chat persistence context.</param>
+public sealed class AddChannelMemberHandler(IChatDbContext db) : IRequestHandler<AddChannelMemberCommand, ChannelMemberDto>
+{
+    /// <summary>Loads the channel and adds the user if not already present; returns the membership DTO.</summary>
+    /// <param name="request">The command.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The membership DTO for the user.</returns>
+    public async Task<ChannelMemberDto> Handle(AddChannelMemberCommand request, CancellationToken ct)
+    {
+        var channel = await db.Channels
+            .Include(c => c.Members)
+            .FirstOrDefaultAsync(c => c.Id == request.ChannelId, ct)
+            ?? throw new NotFoundException("Channel not found.");
+
+        if (!channel.HasMember(request.UserId))
+        {
+            channel.AddMember(request.UserId, ChannelMemberRole.Member);
+            await db.SaveChangesAsync(ct);
+        }
+
+        var member = channel.Members.First(m => m.UserId == request.UserId);
+        return new ChannelMemberDto(member.UserId, member.Role, member.Muted, member.JoinedAt);
+    }
+}

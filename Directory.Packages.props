@@ -1,0 +1,72 @@
+<Project>
+  <!-- Central Package Management. Versions target .NET 10 GA; adjust on first restore if needed. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="Gateway">
+    <PackageVersion Include="Yarp.ReverseProxy" Version="2.2.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Auth">
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Messaging">
+    <PackageVersion Include="MassTransit" Version="8.3.4" />
+    <PackageVersion Include="MassTransit.RabbitMQ" Version="8.3.4" />
+    <PackageVersion Include="MassTransit.EntityFrameworkCore" Version="8.3.4" />
+  </ItemGroup>
+
+  <ItemGroup Label="CQRS / Validation">
+    <PackageVersion Include="MediatR" Version="12.4.1" />
+    <PackageVersion Include="FluentValidation" Version="11.11.0" />
+    <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="EF Core / PostgreSQL">
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="SignalR backplane">
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Caching / Redis">
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Resilience (Polly)">
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Observability">
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.10.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.10.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.10.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.10.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Health checks">
+    <PackageVersion Include="AspNetCore.HealthChecks.Rabbitmq" Version="8.0.2" />
+    <PackageVersion Include="AspNetCore.HealthChecks.Redis" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+    <PackageVersion Include="Shouldly" Version="4.2.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="Redis (direct client — presence)">
+    <PackageVersion Include="StackExchange.Redis" Version="2.8.16" />
+  </ItemGroup>
+
+  <ItemGroup Label="Object storage (MinIO / S3)">
+    <PackageVersion Include="Minio" Version="6.0.3" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>HUB.Media.Domain</RootNamespace>
+  </PropertyGroup>
+</Project>

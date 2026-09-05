@@ -1,0 +1,41 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/DEV/HUB"],
+      "_comment": "Root folder của HUB. Claude đọc/ghi trực tiếp vào đây."
+    },
+
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_REPLACE_WITH_YOUR_TOKEN" },
+      "_comment": "Tạo token tại github.com/settings/tokens — quyền repo, issues, pull_requests."
+    },
+
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://hub:PASSWORD@localhost:5432/hub_chat"],
+      "_comment": "HUB dùng PostgreSQL (database-per-service: hub_chat, hub_notif, hub_directory...). Đổi database trong URL theo service cần debug. Dùng readonly user cho prod."
+    },
+
+    "redis": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-redis", "redis://localhost:6379"],
+      "_comment": "Inspect SignalR backplane, presence TTL keys, directory cache. Debug fan-out."
+    },
+
+    "rabbitmq": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-rabbitmq"],
+      "env": { "RABBITMQ_URL": "amqp://hub:PASSWORD@localhost:5672" },
+      "_comment": "Inspect exchanges/queues/DLQ của HUB. Xem message MessageSent/UserMentioned/FileUploaded, dead-letter, outbox delivery. UI: http://localhost:15672"
+    },
+
+    "roslyn": {
+      "command": "npx",
+      "args": ["-y", "roslyn-codelens-mcp", "C:/DEV/HUB/HUB.slnx"],
+      "_comment": "Semantic .NET analysis qua Roslyn: find symbol/references, circular deps, dead code."
+    }
+  }
+}

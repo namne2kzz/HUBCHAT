@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>HUB.Media.WebApi</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\HUB.Media.Application\HUB.Media.Application.csproj" />
+    <ProjectReference Include="..\HUB.Media.Infrastructure\HUB.Media.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HUB.Shared.Auth\HUB.Shared.Auth.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HUB.Shared.Observability\HUB.Shared.Observability.csproj" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

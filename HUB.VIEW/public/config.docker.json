@@ -1,0 +1,5 @@
+{
+  "apiBaseUrl": "/api/v1",
+  "hubUrl": "/hubs/chat",
+  "dashboardUrl": "http://localhost:4201"
+}

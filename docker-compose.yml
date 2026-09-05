@@ -1,0 +1,233 @@
+# HUB — full self-hosted stack. `docker compose --env-file .env up -d`
+# Infra (postgres/redis/rabbitmq/minio) + observability (otel/jaeger) + HUB services.
+name: hub
+
+services:
+  # ── Infrastructure ────────────────────────────────────────────────────────
+  postgres:
+    container_name: hub-postgres
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports: ["5432:5432"]
+    volumes: ["hub_pg:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis: shared with DASHBOARD (host.docker.internal:6379).
+  # Uncomment below only if running HUB standalone without DASHBOARD.
+  # redis:
+  #   image: redis:7-alpine
+  #   command: ["redis-server", "--save", "60", "1"]
+  #   ports: ["6380:6379"]
+  #   volumes: ["hub_redis:/data"]
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # RabbitMQ: shared with DASHBOARD (host.docker.internal:5672).
+  # Uncomment below only if running HUB standalone without DASHBOARD.
+  # rabbitmq:
+  #   image: rabbitmq:4-management-alpine
+  #   environment:
+  #     RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+  #     RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+  #   ports: ["5672:5672", "15672:15672"]
+  #   volumes: ["hub_rabbit:/var/lib/rabbitmq"]
+  #   healthcheck:
+  #     test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+  #     interval: 15s
+  #     timeout: 10s
+  #     retries: 5
+
+  minio:
+    container_name: hub-minio
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports: ["9000:9000", "9001:9001"] # 9001 = console UI
+    volumes: ["hub_minio:/data"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # pgAdmin — web UI to manage the HUB Postgres (hub_chat / hub_notif / hub_media).
+  # Open http://localhost:5480, log in with the email/password below, then add a
+  # server with host "postgres", port 5432, user/password from POSTGRES_* in .env.
+  pgadmin:
+    container_name: hub-pgadmin
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@hub.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin1234}  # must be >= 6 chars
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports: ["5480:80"]
+    depends_on: [postgres]
+
+  # ── Observability (self-host) ─────────────────────────────────────────────
+  jaeger:
+    container_name: hub-jaeger
+    image: jaegertracing/all-in-one:latest
+    ports: ["16686:16686"] # UI
+
+  otel-collector:
+    container_name: hub-otel-collector
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    command: ["--config=/etc/otel-collector.yaml"]
+    volumes:
+      - ./deploy/otel-collector.yaml:/etc/otel-collector.yaml:ro
+    ports: ["4317:4317"]
+    depends_on: [jaeger]
+
+  # ── HUB services ──────────────────────────────────────────────────────────
+  dashboard-gateway:
+    container_name: hub-dashboard-gateway
+    build:
+      context: .
+      dockerfile: src/Services/DashboardGateway/HUB.DashboardGateway/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret: ${JWT_SECRET}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      InternalApi__Token: ${INTERNAL_API_TOKEN}
+      Dashboard__InternalBaseUrl: ${DASHBOARD_INTERNAL_BASEURL}
+      Redis__Connection: ${REDIS_CONNECTION}
+      RabbitMq__Host: ${RABBITMQ_HOST}
+      RabbitMq__User: ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    expose: ["8080"]
+
+  chat:
+    container_name: hub-chat
+    build:
+      context: .
+      dockerfile: src/Services/Chat/HUB.Chat.WebApi/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret: ${JWT_SECRET}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      ConnectionStrings__ChatDb: "Host=postgres;Port=5432;Database=hub_chat;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      RabbitMq__Host: ${RABBITMQ_HOST}
+      RabbitMq__User: ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      # Token DASHBOARD gửi qua X-Internal-Token header để gọi /internal/channels/*.
+      # Phải khớp với HubChat__InternalToken trong DASHBOARD docker-compose.
+      InternalApi__Token: ${HUB_CHAT_INTERNAL_TOKEN:-CHANGE_THIS_INTERNAL_TOKEN_MIN_32_CHARS!}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    depends_on:
+      postgres: { condition: service_healthy }
+    # Internal only — DASHBOARD Docker kết nối qua shared network hub-net (http://chat:8080).
+    expose: ["8080"]
+    networks: [default, hub-net]
+
+  realtime:
+    container_name: hub-realtime
+    build:
+      context: .
+      dockerfile: src/Services/Realtime/HUB.Realtime.WebApi/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret: ${JWT_SECRET}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      Redis__Connection: ${REDIS_CONNECTION}
+      RabbitMq__Host: ${RABBITMQ_HOST}
+      RabbitMq__User: ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    expose: ["8080"]
+
+  notification:
+    container_name: hub-notification
+    build:
+      context: .
+      dockerfile: src/Services/Notification/HUB.Notification.WebApi/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret: ${JWT_SECRET}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      ConnectionStrings__NotificationDb: "Host=postgres;Port=5432;Database=hub_notif;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      RabbitMq__Host: ${RABBITMQ_HOST}
+      RabbitMq__User: ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    depends_on:
+      postgres: { condition: service_healthy }
+    expose: ["8080"]
+
+  media:
+    container_name: hub-media
+    build:
+      context: .
+      dockerfile: src/Services/Media/HUB.Media.WebApi/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret: ${JWT_SECRET}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      ConnectionStrings__MediaDb: "Host=postgres;Port=5432;Database=hub_media;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      RabbitMq__Host: ${RABBITMQ_HOST}
+      RabbitMq__User: ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      # host.docker.internal so presigned URLs work from BOTH the container and the browser (Docker Desktop).
+      Minio__Endpoint: "host.docker.internal:9000"
+      Minio__AccessKey: ${MINIO_ROOT_USER}
+      Minio__SecretKey: ${MINIO_ROOT_PASSWORD}
+      Minio__UseSsl: "false"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    expose: ["8080"]
+
+  gateway:
+    container_name: hub-gateway
+    build:
+      context: .
+      dockerfile: src/Gateway/HUB.Gateway/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret: ${JWT_SECRET}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    ports: ["8080:8080"] # single public entry point
+    depends_on: [dashboard-gateway, chat, realtime, notification, media]
+
+  hub-view:
+    container_name: hub-view
+    build:
+      context: .
+      dockerfile: HUB.VIEW/Dockerfile
+    ports: ["4202:80"] # Nexus HUB frontend
+    depends_on: [gateway]
+
+volumes:
+  hub_pg:
+  hub_minio:
+
+# Shared network giữa HUB và DASHBOARD Docker.
+# Network được tạo thủ công một lần: docker network create hub-net
+# Cả HUB và DASHBOARD đều khai báo external: true — không ai "own" nó.
+networks:
+  hub-net:
+    external: true
+    name: hub-net

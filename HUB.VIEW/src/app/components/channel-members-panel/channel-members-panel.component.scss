@@ -1,0 +1,264 @@
+/* ── Host layout ──────────────────────────────────────────────────────────── */
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Scrollable member list ───────────────────────────────────────────────── */
+.members-panel {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.members-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.members-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.members-loading {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+.members-error {
+  font-size: 0.8rem;
+  color: var(--danger);
+  padding: 12px 16px;
+}
+
+.members-list {
+  padding: 6px 0;
+}
+
+/* Member row */
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  transition: background 0.1s;
+
+  &:hover { background: var(--bg-hover); }
+}
+
+.member-avatar-wrap { position: relative; flex-shrink: 0; }
+
+/* Reuse global .avatar + .presence-dot styles */
+
+.member-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.member-name { font-size: 0.82rem; color: var(--text-primary); }
+
+.role-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.member-status-text {
+  font-size: 0.68rem;
+  color: transparent;
+  flex-shrink: 0;
+
+  &.status-online { color: var(--success); }
+}
+
+/* × remove button — shown only when canManage */
+.member-remove-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
+
+  .member-row:hover & { opacity: 1; }
+
+  &:hover:not(:disabled) {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.3;
+  }
+}
+
+/* Transfer-ownership (crown) button — mirrors the remove button but in an amber accent. */
+.member-owner-btn {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 4px; border: none;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  opacity: 0; transition: opacity 0.1s, background 0.1s, color 0.1s;
+
+  .member-row:hover & { opacity: 1; }
+  &:hover:not(:disabled) { background: var(--warning-soft); color: var(--warning); }
+  &:disabled { cursor: default; opacity: 0.3; }
+}
+
+/* ── Add member footer ─────────────────────────────────────────────────────── */
+.add-member-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.add-member-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+  text-align: left;
+
+  &:hover { color: var(--text-primary); background: var(--bg-hover); }
+}
+
+/* ── Picker dropdown ─────────────────────────────────────────────────────── */
+.add-picker {
+  border-top: 1px solid var(--border);
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.add-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+
+.add-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-family: inherit;
+
+  &::placeholder { color: var(--text-muted); }
+}
+
+.add-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 4px 0;
+}
+
+.add-picker-empty {
+  padding: 12px 14px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.add-picker-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 12px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+
+  &:hover:not(:disabled) { background: var(--bg-hover); }
+  &:disabled { opacity: 0.6; cursor: default; }
+}
+
+.add-picker-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--avatar-fg);
+  background: var(--avatar-bg);
+}
+
+.add-picker-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.add-picker-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.add-picker-email {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-picker-plus {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s;
+
+  .add-picker-item:hover & {
+    opacity: 1;
+    color: var(--accent-text);
+  }
+}

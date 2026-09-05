@@ -1,0 +1,245 @@
+/* ============================================================================
+   HUB - DESIGN TOKENS (single source of truth)
+   Palette: Trang - Xam - Den - Cam  |  theo mockup "Pulse Chat App"
+
+   Day la NOI DUY NHAT chua gia tri mau cua toan app.
+   Doi theme = sua file nay, khong can scan/dung toi component nao khac.
+   Trong component luon dung var(--token), KHONG hardcode hex.
+
+   Quy tac (theo mockup):
+   01. Cam CHI xuat hien o: bong bong tin cua minh, badge tin chua doc,
+       nut gui, kenh/nav dang chon, logo brand. Con lai trung tinh.
+   02. Avatar nguoi dung luon trung tinh (xam), khong bao gio cam.
+   03. Rail icon luon toi o ca 2 theme; sub-sidebar bam theo theme.
+   04. Chu tren nen cam dung --accent-contrast; chu cam tren nen sang dung
+       --accent-text (orange-700) de dat 4.5:1.
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   1. PRIMITIVES - bang mau tho. KHONG dung truc tiep trong component.
+   ---------------------------------------------------------------------------- */
+:root {
+  /* Neutral - hoi am de hop voi cam */
+  --gray-0:    #FFFFFF;
+  --gray-25:   #FAFAF9;
+  --gray-50:   #F4F4F3;
+  --gray-100:  #E7E7E5;
+  --gray-200:  #D3D3D0;
+  --gray-400:  #A8A8A4;
+  --gray-500:  #787874;
+  --gray-700:  #52524E;
+  --gray-800:  #3A3A37;
+  --gray-900:  #262624;
+  --ink:       #171716;
+  --gray-1000: #0B0B0A;
+
+  /* Orange - mau hanh dong duy nhat */
+  --orange-50:  #FFF4ED;
+  --orange-100: #FFE4D3;
+  --orange-200: #FFC7A8;
+  --orange-300: #FFA36F;
+  --orange-400: #FF8340;
+  --orange-500: #FF6A1A;
+  --orange-600: #E8500A;
+  --orange-700: #B93C06;
+  --orange-800: #8A2E08;
+  --orange-900: #5C1F06;
+
+  /* State - chi dung cho feedback, khong dung trang tri */
+  --state-success: #0E9F6E;
+  --state-warning: #D97706;
+  --state-danger:  #D92D20;
+
+  /* Shape - khong phu thuoc theme */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius:    12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+}
+
+/* ----------------------------------------------------------------------------
+   2. SEMANTIC TOKENS - LIGHT (mac dinh)
+   Thang be mat: main trang | sub-sidebar gray-25 | rail den
+   ---------------------------------------------------------------------------- */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Nen */
+  --bg-app:       var(--gray-0);
+  --bg-surface:   var(--gray-0);
+  --bg-surface-2: var(--gray-50);
+  --bg-sunken:    var(--gray-25);
+  --bg-hover:     rgba(23, 23, 22, 0.045);
+  --bg-active:    var(--orange-50);
+  --bg-overlay:   rgba(11, 11, 10, 0.45);
+
+  /* Vien */
+  --border:        var(--gray-100);
+  --border-strong: var(--gray-200);
+
+  /* Chu */
+  --text-primary:   var(--ink);
+  --text-secondary: var(--gray-700);
+  --text-muted:     var(--gray-500);
+  --text-inverse:   var(--gray-0);
+
+  /* Cam - accent */
+  --accent:          var(--orange-500);
+  --accent-hover:    var(--orange-600);
+  --accent-soft:     var(--orange-100);
+  --accent-subtle:   var(--orange-50);
+  --accent-text:     var(--orange-700);
+  --accent-contrast: var(--gray-0);
+  --accent-gradient: var(--orange-500);
+
+  /* Bong bong chat - minh = cam dac, doi phuong = xam nhat */
+  --bubble-me-bg:       var(--orange-500);
+  --bubble-me-text:     var(--gray-0);
+  --bubble-me-border:   transparent;
+  --bubble-them-bg:     var(--gray-50);
+  --bubble-them-text:   var(--ink);
+  --bubble-them-border: var(--gray-100);
+
+  /* Avatar nguoi dung - trung tinh */
+  --avatar-bg: var(--gray-200);
+  --avatar-fg: var(--ink);
+
+  /* Rail icon - toi o ca 2 theme (xem muc 4) */
+  --rail-bg:    var(--ink);
+  --bg-sidebar: var(--gray-25);
+
+  /* Trang thai */
+  --success:       var(--state-success);
+  --success-soft:  rgba(14, 159, 110, 0.10);
+  --warning:       var(--state-warning);
+  --warning-soft:  rgba(217, 119, 6, 0.12);
+  --danger:        var(--state-danger);
+  --danger-text:   var(--state-danger);
+  --danger-soft:   #FEF2F1;
+  --danger-border: #FBD5D2;
+  --info:          var(--gray-700);
+
+  /* Bong - chi cho lop noi */
+  --shadow-sm: 0 1px 2px rgba(11, 11, 10, 0.06);
+  --shadow:    0 16px 40px -20px rgba(11, 11, 10, 0.28);
+  --shadow-lg: 0 30px 70px -36px rgba(11, 11, 10, 0.40);
+
+  /* Scrollbar */
+  --scrollbar-thumb:       rgba(23, 23, 22, 0.16);
+  --scrollbar-thumb-hover: rgba(23, 23, 22, 0.28);
+
+  /* Code trong markdown */
+  --code-bg:        var(--gray-50);
+  --code-inline-bg: var(--gray-100);
+  --quote-border:   var(--gray-200);
+}
+
+/* ----------------------------------------------------------------------------
+   3. SEMANTIC TOKENS - DARK
+   Thang be mat: sidebar gray-1000 | main ink | bubble/card gray-900
+   ---------------------------------------------------------------------------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-app:       var(--ink);
+  --bg-surface:   var(--gray-900);
+  --bg-surface-2: var(--gray-900);
+  --bg-sunken:    var(--gray-1000);
+  --bg-hover:     rgba(255, 255, 255, 0.055);
+  --bg-active:    var(--gray-900);
+  --bg-overlay:   rgba(0, 0, 0, 0.62);
+
+  --border:        var(--gray-900);
+  --border-strong: var(--gray-800);
+
+  --text-primary:   var(--gray-25);
+  --text-secondary: var(--gray-200);
+  --text-muted:     var(--gray-400);
+  --text-inverse:   var(--ink);
+
+  --accent:          var(--orange-400);
+  --accent-hover:    var(--orange-300);
+  --accent-soft:     #3A2116;
+  --accent-subtle:   #3A2116;
+  --accent-text:     var(--orange-300);
+  --accent-contrast: var(--ink);
+  --accent-gradient: var(--orange-400);
+
+  --bubble-me-bg:       var(--orange-400);
+  --bubble-me-text:     var(--ink);
+  --bubble-me-border:   transparent;
+  --bubble-them-bg:     var(--gray-900);
+  --bubble-them-text:   var(--gray-25);
+  --bubble-them-border: var(--gray-800);
+
+  --avatar-bg: var(--gray-800);
+  --avatar-fg: var(--gray-25);
+
+  --rail-bg:    var(--gray-1000);
+  --bg-sidebar: var(--gray-1000);
+
+  --success:       var(--state-success);
+  --success-soft:  rgba(14, 159, 110, 0.16);
+  --warning:       var(--state-warning);
+  --warning-soft:  rgba(217, 119, 6, 0.18);
+  --danger:        #F0645A;
+  --danger-text:   #F0645A;
+  --danger-soft:   rgba(240, 100, 90, 0.14);
+  --danger-border: rgba(240, 100, 90, 0.32);
+  --info:          var(--gray-400);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow:    0 16px 40px -20px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 30px 70px -36px rgba(0, 0, 0, 0.70);
+
+  --scrollbar-thumb:       rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
+
+  --code-bg:        var(--gray-1000);
+  --code-inline-bg: var(--gray-900);
+  --quote-border:   var(--gray-700);
+}
+
+/* ----------------------------------------------------------------------------
+   4. SURFACE INVERSE - "dao toi".
+   Theo mockup: rail icon luon den ke ca o light mode. Khai bao lai token o day
+   -> moi phan tu con tu ke thua, khong can sua CSS con.
+   Class .surface-inverse dung lai duoc cho vung toi bat ky.
+   ---------------------------------------------------------------------------- */
+.surface-inverse,
+.rail {
+  color-scheme: dark;
+
+  --bg-app:       var(--gray-1000);
+  --bg-surface:   var(--gray-900);
+  --bg-surface-2: var(--gray-900);
+  --bg-sunken:    var(--gray-1000);
+  --bg-hover:     rgba(255, 255, 255, 0.06);
+  --bg-active:    var(--gray-900);
+
+  --border:        var(--gray-800);
+  --border-strong: var(--gray-700);
+
+  --text-primary:   var(--gray-25);
+  --text-secondary: var(--gray-200);
+  --text-muted:     var(--gray-500);
+  --text-inverse:   var(--ink);
+
+  --accent:          var(--orange-500);
+  --accent-hover:    var(--orange-400);
+  --accent-soft:     #3A2116;
+  --accent-subtle:   #3A2116;
+  --accent-text:     var(--orange-400);
+  --accent-contrast: var(--gray-0);
+  --accent-gradient: var(--orange-500);
+
+  --avatar-bg: var(--gray-800);
+  --avatar-fg: var(--gray-25);
+
+  --danger:        #F0645A;
+  --danger-text:   #F0645A;
+  --danger-soft:   rgba(240, 100, 90, 0.14);
+  --danger-border: rgba(240, 100, 90, 0.32);
+}

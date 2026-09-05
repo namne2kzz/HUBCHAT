@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>HUB.Shared.Contracts</RootNamespace>
+  </PropertyGroup>
+</Project>

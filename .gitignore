@@ -1,0 +1,54 @@
+# ── Secrets & local overrides — NEVER commit ───────────────────────────────
+.env
+.env.local
+.env.*.local
+.claude/settings.local.json
+.claude/mcp.json
+
+# ── .NET dev/local appsettings (may contain real credentials) ───────────────
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.local.json
+*.pubxml
+*.pubxml.user
+
+# ── .NET build outputs ──────────────────────────────────────────────────────
+**/bin/
+**/obj/
+artifacts/
+
+# ── IDE / tooling ───────────────────────────────────────────────────────────
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+
+# ── Angular / Node (HUB.VIEW) ───────────────────────────────────────────────
+HUB.VIEW/node_modules/
+HUB.VIEW/dist/
+HUB.VIEW/.angular/
+
+# ── Test results ─────────────────────────────────────────────────────────────
+TestResults/
+coverage/
+*.trx
+
+# ── Docker local volumes / bind-mounts ──────────────────────────────────────
+.data/
+
+# ── Playwright MCP output (screenshots, snapshots) ──────────────────────────
+.playwright-mcp/
+
+# ── Temp screenshots / debug images in project root ─────────────────────────
+*.png
+*.jpg
+*.jpeg
+!**/public/**/*.png
+!**/public/**/*.jpg
+!**/assets/**/*.png
+!**/assets/**/*.jpg
+
+# ── OS artifacts ────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
