@@ -49,4 +49,14 @@ public sealed class DashboardClient(HttpClient http) : IDashboardClient
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<WorkItemContext>(ct);
     }
+
+    /// <inheritdoc />
+    public async Task<UserSettings?> GetUserSettingsAsync(Guid userId, CancellationToken ct)
+    {
+        using var response = await http.GetAsync($"users/{userId}/settings", ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        var dict = await response.Content.ReadFromJsonAsync<Dictionary<string, string?>>(ct);
+        return new UserSettings(dict ?? new Dictionary<string, string?>());
+    }
 }

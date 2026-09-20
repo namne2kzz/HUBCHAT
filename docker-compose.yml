@@ -131,8 +131,9 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
     depends_on:
       postgres: { condition: service_healthy }
-    # Internal only — DASHBOARD Docker kết nối qua shared network hub-net (http://chat:8080).
-    expose: ["8080"]
+    # Expose ra host để DASHBOARD chạy native (dotnet run) có thể reach http://localhost:55924.
+    # Docker-to-Docker vẫn dùng http://chat:8080 qua hub-net.
+    ports: ["55924:8080"]
     networks: [default, hub-net]
 
   realtime:

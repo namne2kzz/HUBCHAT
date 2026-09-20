@@ -32,4 +32,10 @@ public interface IDashboardClient
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The context, or null if the work item does not exist (404).</returns>
     Task<WorkItemContext?> GetWorkItemAsync(Guid workItemId, CancellationToken ct);
+
+    /// <summary>Gets all persisted display-preference settings for a user.</summary>
+    /// <param name="userId">The user id.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The settings map, or null if the user does not exist (404).</returns>
+    Task<UserSettings?> GetUserSettingsAsync(Guid userId, CancellationToken ct);
 }

@@ -38,6 +38,13 @@ public static class DirectoryEndpoints
             return wi is null ? Results.NotFound() : Results.Ok(wi);
         });
 
+        // The caller's own display-preference settings (date format, timezone…) sourced from DASHBOARD.
+        group.MapGet("/me/settings", async (ICurrentUser currentUser, IDirectoryService directory, CancellationToken ct) =>
+        {
+            var settings = await directory.GetUserSettingsAsync(currentUser.Id, ct);
+            return settings is null ? Results.NotFound() : Results.Ok(settings);
+        });
+
         return app;
     }
 }

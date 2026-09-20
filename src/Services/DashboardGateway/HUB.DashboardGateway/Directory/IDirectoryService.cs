@@ -27,4 +27,13 @@ public interface IDirectoryService
     /// <param name="workItemId">The work item id.</param>
     /// <param name="ct">Cancellation token.</param>
     Task<WorkItemContext?> GetWorkItemAsync(Guid workItemId, CancellationToken ct);
+
+    /// <summary>
+    /// Gets a user's persisted display-preference settings from DASHBOARD.
+    /// Cached with a short TTL (30 s) so changes made in DASHBOARD propagate quickly.
+    /// </summary>
+    /// <param name="userId">The user id.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The settings, or null if the user does not exist.</returns>
+    Task<UserSettings?> GetUserSettingsAsync(Guid userId, CancellationToken ct);
 }

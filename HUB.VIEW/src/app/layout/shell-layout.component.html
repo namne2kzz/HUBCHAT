@@ -66,8 +66,11 @@
 
         <!-- Workspace header -->
         <div class="sub-head">
-          <p class="sub-ws-name">{{ workspaceName() }}</p>
-          <p class="sub-ws-sub">Nexus HUB</p>
+          <div class="sub-ws-logo" [title]="workspaceName()">{{ workspaceName().charAt(0) }}</div>
+          <div class="sub-ws-info">
+            <p class="sub-ws-name">{{ workspaceName() }}</p>
+            <p class="sub-ws-sub">Nexus HUB</p>
+          </div>
         </div>
 
         <!-- Global search -->

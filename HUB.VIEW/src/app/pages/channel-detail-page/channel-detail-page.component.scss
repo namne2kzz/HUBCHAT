@@ -1,5 +1,27 @@
 :host { display: flex; flex-direction: column; height: 100%; }
 
+/* ── Channel type icon in topbar ─────────────────────────────────────────── */
+.topbar-chan-icon {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  transition: background 0.12s, border-color 0.12s;
+}
+/* Private channel — accent tint */
+.topbar-chan-icon--private {
+  background: var(--accent-subtle);
+  border-color: var(--accent-soft);
+  color: var(--accent-text);
+}
+/* DM / Group DM — success tint */
+.topbar-chan-icon--dm {
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  border-color: color-mix(in srgb, var(--success) 25%, transparent);
+  color: var(--success);
+}
+
 .channel-body {
   flex: 1;
   display: flex;

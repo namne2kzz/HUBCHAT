@@ -13,6 +13,8 @@ public sealed class DirectoryService(IDashboardClient dashboard, IDistributedCac
     private static readonly TimeSpan MembershipTtl = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan WorkItemTtl   = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan MemberListTtl = TimeSpan.FromMinutes(5);
+    // Settings are user-controlled and should reflect changes quickly — keep TTL very short.
+    private static readonly TimeSpan SettingsTtl   = TimeSpan.FromSeconds(30);
 
     /// <inheritdoc />
     public Task<UserProfile?> GetUserAsync(Guid userId, CancellationToken ct) =>
@@ -44,6 +46,10 @@ public sealed class DirectoryService(IDashboardClient dashboard, IDistributedCac
     /// <inheritdoc />
     public Task<WorkItemContext?> GetWorkItemAsync(Guid workItemId, CancellationToken ct) =>
         GetOrPullAsync($"dir:workitem:{workItemId}", WorkItemTtl, () => dashboard.GetWorkItemAsync(workItemId, ct), ct);
+
+    /// <inheritdoc />
+    public Task<UserSettings?> GetUserSettingsAsync(Guid userId, CancellationToken ct) =>
+        GetOrPullAsync($"dir:settings:{userId}", SettingsTtl, () => dashboard.GetUserSettingsAsync(userId, ct), ct);
 
     private async Task<T?> GetOrPullAsync<T>(string key, TimeSpan ttl, Func<Task<T?>> pull, CancellationToken ct)
         where T : class
