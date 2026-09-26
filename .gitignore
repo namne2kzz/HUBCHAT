@@ -52,3 +52,4 @@ coverage/
 # ── OS artifacts ────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+.claude/self-test.local.json

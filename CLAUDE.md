@@ -10,7 +10,7 @@
 | Messaging | **RabbitMQ** qua **MassTransit** (transactional outbox) — broker riêng của HUB |
 | Realtime | **SignalR** + **Redis backplane** |
 | Gateway | **YARP** reverse proxy (1 entry point, JWT, rate-limit, sticky WS) |
-| Frontend | Angular v20, Signals, Standalone (chưa scaffold — thêm ở phase HUB.VIEW) |
+| Frontend | Angular v19, Signals, Standalone Components, RxJS (`HUB.VIEW/`, dev port 4202) |
 | Database | **PostgreSQL 17** (EF Core 10, database-per-service), **Redis** (StackExchange.Redis) |
 | Storage | **MinIO** (S3-compatible) — attachments qua presigned URL |
 | Deploy | **Docker / docker-compose** (self-host, KHÔNG cloud managed) |
@@ -47,7 +47,13 @@ HUB/                                            # repo tách biệt (C:\DEV\HUB)
 │       ├── Media/           (planned P2 — MinIO)
 │       └── Meeting/         (planned P2 — LiveKit)
 ├── tests/                                        # xUnit (Domain, handlers, integration)
-└── HUB.VIEW/                                     # Angular (planned)
+└── HUB.VIEW/src/app/                             # Angular v19 Frontend (dev :4202)
+    ├── components/                               # channel-list · message-list · message-input · typing-indicator...
+    ├── core/ · guards/ · interceptors/ · layout/  # shell, JWT interceptor, route guards
+    ├── models/                                   # interfaces & types (*.model.ts)
+    ├── pages/                                    # channels-page · channel-detail-page · notifications-page
+    ├── services/ · directives/ · utils/          # feature services (REST + SignalR client)
+    └── resources/
 ```
 
 Mỗi **service** = 1 bounded context, Clean Architecture 4 lớp riêng. KHÔNG JOIN chéo database; tham chiếu service khác bằng id + pull/cache hoặc integration event.
@@ -83,7 +89,8 @@ Mỗi **service** = 1 bounded context, Clean Architecture 4 lớp riêng. KHÔNG
 - Response DTOs → `Application/{Feature}/DTOs/` — never inside Controller.
 - EF configurations → `Infrastructure/Persistence/Configurations/`.
 - Integration events → `HUB.Shared.Contracts/Events/` (versioned).
-- Angular (khi có): 4 files `.ts/.html/.scss/.spec.ts`; interfaces → `models/*.model.ts`.
+- Angular component = 4 files luôn luôn: `.ts` / `.html` / `.scss` / `.spec.ts` — never inline template.
+- Angular interfaces/types → `HUB.VIEW/src/app/models/*.model.ts` — never inside component or service files.
 
 ### Code documentation — every public method
 ```csharp
@@ -111,17 +118,48 @@ Trước khi sinh code .NET, đọc thêm `.claude/memory/mistakes.md` (lỗi th
 | Backend core | `generate-dotnet` · `clean-architecture` · `ddd-cqrs` · `unit-testing` · `testcontainers` · `snapshot-testing` · `api-versioning` · `resilience-patterns` · `opentelemetry` · `aspire-orchestration` |
 | Microservices | `microservices-structure` · `yarp-gateway` · `masstransit-rabbitmq` · `outbox-pattern` · `signalr-realtime` |
 | Data | `efcore-postgresql` · `migrations` · `query-optimization` · `redis-cache` · `minio-storage` |
+| Frontend | `generate-angular` · `angular-signals` · `angular-rxjs` · `unit-testing-angular` |
 
-Agents: `auto` · `dotnet-coder` · `architect` · `reviewer` · `db-optimizer` · `security-auditor` · `build-error-resolver`.
-Commands: `/build-feature` · `/fix-bug` · `/pr-review` · `/tdd` · `/security-scan` · `/health-check` · `/deploy-docker`.
+Agents: `auto` · `dotnet-coder` · `angular-coder` · `architect` · `reviewer` · `db-optimizer` · `security-auditor` · `build-error-resolver` · `ui-tester`.
+Commands: `/build-feature` · `/fix-bug` · `/pr-review` · `/tdd` · `/security-scan` · `/health-check` · `/deploy-docker` · `/self-test`.
 
 ---
 
-## Business Documentation (`.claude/histories/`)
+## Business Documentation (`.claude/business/`)
 
-Sau khi thêm/sửa **business logic** của 1 feature (rule/workflow/permission/event mới) → PHẢI update file `.claude/histories/{feature}.dod.md` tương ứng.
+Sau khi thêm/sửa **business logic** của 1 feature (rule/workflow/permission/event mới) → PHẢI update file `.claude/business/{feature}.dod.md` tương ứng.
 
-- Đọc `.claude/histories/RULES.md` để biết quy tắc (Update Log + Business Doc, tiếng Việt, khi nào update).
+- Đọc `.claude/business/RULES.md` để biết quy tắc (Update Log + Business Doc, tiếng Việt, khi nào update).
 - Mỗi feature 1 file `{feature}.dod.md` (channels, messages, reactions, members, presence, notifications, media, meeting, integration-dashboard).
 - Thay đổi ảnh hưởng domain tổng thể → update thêm `domain-business.md`.
 - Refactor kỹ thuật thuần (không đổi business) → không cần update.
+
+---
+
+## UI Self-Test (`.claude/self-test/`)
+
+Test UI thật bằng Playwright MCP (Microsoft Edge) thay cho test tay: `/self-test` hoặc agent `ui-tester`.
+
+- Quy tắc ghi/đọc: `.claude/self-test/RULES.md` — **đọc trước khi chạy hoặc ghi**.
+- Môi trường + danh sách module + ưu tiên: `.claude/self-test/test-plan.md`.
+- Module đang code dở → khai vào `.claude/self-test/wip-features.md` để self-test skip.
+- Kết quả từng module: `.claude/self-test/modules/{feature}.test.md` · bug: `bugs.md` · cải tiến: `improvements.md`.
+- Credential: copy `.claude/self-test.local.example.json` → `.claude/self-test.local.json` (gitignored).
+- Bật Playwright MCP: copy `.claude/settings.local.example.json` → `.claude/settings.local.json`, thêm `playwright` từ `.claude/mcp.json.example` vào `.claude/mcp.json`, **restart session**.
+- **HUB không chạy độc lập** — DASHBOARD (`:4200`/`:5152`) phải sống trước để có SSO + internal API. Case realtime phải test **2 tab**, không reload.
+
+---
+
+## Implementation Plan (`.claude/plans/`)
+
+Plan chi tiết cho feature lớn **trước khi code** (schema, API contract, thứ tự implement, migration). 1 feature = 1 file `{feature-slug}.md`. Xem `.claude/plans/README.md`.
+
+Phân biệt: `plans/` = sẽ làm gì · `business/` = nghiệp vụ phải đúng thế nào · `self-test/` = đã kiểm chứng chưa.
+
+---
+
+## Kiến thức bổ sung (`.claude/docs/`)
+
+Tài liệu nền do **user cung cấp** (domain knowledge, glossary, quy ước nghiệp vụ, spec, ADR, hợp đồng bên thứ ba). Claude **đọc** khi cần, **không tự ghi** vào đây trừ khi user yêu cầu rõ ràng. Xem `.claude/docs/README.md`.
+
+Đừng lẫn với tài liệu kiến trúc ở root repo: `PLAN.md` và `docs/DASHBOARD-INTERNAL-API.md`.

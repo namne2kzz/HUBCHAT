@@ -46,8 +46,12 @@ Những thứ thường cần hỏi cho HUB:
 | **Code review** | review, violation, refactor, clean up, feedback | `reviewer` | — |
 | **Architecture/design** | design, architecture, ADR, bounded context, aggregate boundary, diagram | `architect` | — |
 | **Build error** | error, compile, CS####, build fail, cannot find | `build-error-resolver` | — |
+| **Frontend general** | component, signal, template, HTML, SCSS, guard, interceptor, pipe, Angular, TypeScript, route, form, standalone, HUB.VIEW | `angular-coder` | `generate-angular` · `angular-signals` |
+| **Frontend unit test** | spec, Jasmine, TestBed, jasmine.createSpyObj, httpMock | — | `unit-testing-angular` |
+| **RxJS / HTTP streams** | Observable, pipe, switchMap, takeUntil, RxJS, HTTP stream, SignalR client stream | — | `angular-rxjs` |
+| **UI / E2E test (Playwright)** | self-test, E2E, end-to-end, Playwright, browser, test UI, chạy thử, kiểm tra trên app, regression, repro, realtime 2 tab | `ui-tester` | — |
 
-> Angular chưa scaffold — khi có `HUB.VIEW`, bổ sung lại row frontend + agent `angular-coder` + skills angular.
+> Frontend HUB = `HUB.VIEW/` (Angular v19, standalone + Signals, dev port 4202). Component = 4 file `.ts/.html/.scss/.spec.ts`; interfaces → `HUB.VIEW/src/app/models/*.model.ts`.
 
 ---
 
@@ -76,7 +80,7 @@ Post-gen checklist:
 
 ## Bước 6 — Business doc
 
-Nếu thay đổi business logic 1 feature → update `.claude/histories/{feature}.dod.md` theo `.claude/histories/RULES.md`.
+Nếu thay đổi business logic 1 feature → update `.claude/business/{feature}.dod.md` theo `.claude/business/RULES.md`.
 
 ---
 

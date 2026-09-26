@@ -6,6 +6,12 @@
       "_comment": "Root folder của HUB. Claude đọc/ghi trực tiếp vào đây."
     },
 
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp"],
+      "_comment": "Self-test UI (/self-test + agent ui-tester): Claude tự mở Microsoft Edge, navigate, click, fill form, đọc console/network. Cần: npx playwright install msedge"
+    },
+
     "github": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-github"],

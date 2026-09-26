@@ -1,0 +1,9 @@
+{
+  "_comment": "Copy sang .claude/self-test.local.json (gitignored) và điền credential thật. Dùng bởi /self-test + agent ui-tester.",
+  "baseUrl": "http://localhost:4202",
+  "gatewayUrl": "http://localhost:8080",
+  "dashboardUrl": "http://localhost:4200",
+  "email": "you@example.com",
+  "password": "REPLACE_ME",
+  "channelName": "General"
+}

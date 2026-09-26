@@ -1,13 +1,13 @@
-# Quy tắc Document — `.claude/histories/` (HUB)
+# Quy tắc Document — `.claude/business/` (HUB)
 
 Rule bắt buộc — **đọc trước khi tạo/sửa bất kỳ `.dod.md` hoặc `domain-business.md`.**
 
 ## 1. Mục đích
-`.claude/histories/` lưu document **business** của HUB (không phải kỹ thuật) — để PM/BA/dev mới hiểu mỗi feature làm gì, rule gì, workflow nào, mà không cần đọc code.
+`.claude/business/` lưu document **business** của HUB (không phải kỹ thuật) — để PM/BA/dev mới hiểu mỗi feature làm gì, rule gì, workflow nào, mà không cần đọc code.
 
 ## 2. Cấu trúc
 ```
-.claude/histories/
+.claude/business/
 ├── RULES.md                    # file này
 ├── domain-business.md          # tổng quan domain/business toàn HUB
 ├── channels.dod.md             # kênh chat (public/private/DM)

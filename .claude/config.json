@@ -20,7 +20,7 @@
       "testing": "xUnit + NSubstitute + Shouldly + Testcontainers"
     },
     "frontend": {
-      "framework": "Angular 20 (planned — chưa scaffold, thêm ở phase có HUB.VIEW)",
+      "framework": "Angular 19 (HUB.VIEW/, standalone + Signals, dev port 4202)",
       "language": "TypeScript 5.x",
       "state": "Angular Signals"
     },
@@ -49,5 +49,5 @@
   },
   "skills": ".claude/skills/<name>/SKILL.md",
   "agents": ".claude/agents/<name>.md",
-  "histories": ".claude/histories/<feature>.dod.md"
+  "business": ".claude/business/<feature>.dod.md"
 }

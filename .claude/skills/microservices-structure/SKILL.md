@@ -33,7 +33,7 @@ builder.Services.AddHealthChecks();
 - **1 service 1 database**; migration EF riêng; **không JOIN chéo DB**.
 - Đồng bộ async qua **RabbitMQ** (outbox + idempotent consumer), không gọi DB service khác.
 - Lấy data DASHBOARD chỉ qua `HUB.DashboardGateway` (pull + cache).
-- Thêm service mới: đăng ký project vào `HUB.slnx`, thêm vào `docker-compose.yml` (+ route ở gateway nếu expose), tạo `histories/{name}.dod.md`.
+- Thêm service mới: đăng ký project vào `HUB.slnx`, thêm vào `docker-compose.yml` (+ route ở gateway nếu expose), tạo `business/{name}.dod.md`.
 
 ## Đừng
 - ❌ Chia sẻ DbContext/DB giữa service. ❌ Reference chéo Domain của service khác (dùng Contracts + id).
