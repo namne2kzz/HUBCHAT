@@ -21,7 +21,7 @@ public sealed class MessageTests
     public void Post_KeepsDistinctMentions()
     {
         var u = Guid.NewGuid();
-        var message = Message.Post(Guid.NewGuid(), Guid.NewGuid(), "hi", MessageFormat.Markdown, null, [u, u]);
+        var message = Message.Post(Guid.NewGuid(), Guid.NewGuid(), "hi", MessageFormat.Markdown, mentions: [u, u]);
         message.Mentions.ShouldHaveSingleItem();
     }
 
