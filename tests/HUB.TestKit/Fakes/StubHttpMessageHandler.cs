@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace HUB.DashboardGateway.Tests;
+namespace HUB.TestKit.Fakes;
 
 /// <summary>Test double that returns canned responses based on the request path, and records call counts.</summary>
 /// <param name="responder">Maps a relative path (e.g. "users/{id}") to an HTTP response.</param>

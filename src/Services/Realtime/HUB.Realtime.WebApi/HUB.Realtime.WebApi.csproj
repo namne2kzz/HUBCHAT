@@ -4,6 +4,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Lets the test project reach the hub, consumers and presence store of this Web SDK project. -->
+    <InternalsVisibleTo Include="HUB.Realtime.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" />
     <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="MassTransit" />

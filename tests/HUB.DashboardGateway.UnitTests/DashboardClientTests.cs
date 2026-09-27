@@ -1,8 +1,9 @@
 using HUB.DashboardGateway.Dashboard;
+using HUB.TestKit.Fakes;
 using Shouldly;
 using Xunit;
 
-namespace HUB.DashboardGateway.Tests;
+namespace HUB.DashboardGateway.UnitTests;
 
 public sealed class DashboardClientTests
 {

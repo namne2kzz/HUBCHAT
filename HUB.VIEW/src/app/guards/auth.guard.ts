@@ -3,6 +3,7 @@ import { CanActivateFn, CanActivateChildFn } from '@angular/router';
 import { StorageService } from '../core/services/storage.service';
 import { StorageKeys } from '../core/constants/storage-keys.constant';
 import { ConfigService } from '../core/services/config.service';
+import { NavigationService } from '../core/services/navigation.service';
 
 /**
  * Redirects unauthenticated users to DASHBOARD login.
@@ -10,9 +11,10 @@ import { ConfigService } from '../core/services/config.service';
  * AppComponent reads those params, stores them, and cleans the URL.
  */
 const redirectToDashboardLogin = (): boolean => {
-  const config    = inject(ConfigService);
-  const returnUrl = encodeURIComponent(window.location.href);
-  window.location.href = `${config.dashboardUrl}/login?returnUrl=${returnUrl}`;
+  const config     = inject(ConfigService);
+  const navigation = inject(NavigationService);
+  const returnUrl  = encodeURIComponent(navigation.currentUrl());
+  navigation.goTo(`${config.dashboardUrl}/login?returnUrl=${returnUrl}`);
   return false;
 };
 

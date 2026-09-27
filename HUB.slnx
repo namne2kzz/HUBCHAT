@@ -40,7 +40,14 @@
     <Project Path="src/Services/Media/HUB.Media.WebApi/HUB.Media.WebApi.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/HUB.DashboardGateway.Tests/HUB.DashboardGateway.Tests.csproj" />
-    <Project Path="tests/HUB.Chat.Domain.Tests/HUB.Chat.Domain.Tests.csproj" />
+    <Project Path="tests/HUB.TestKit/HUB.TestKit.csproj" />
+    <Project Path="tests/HUB.Chat.Domain.UnitTests/HUB.Chat.Domain.UnitTests.csproj" />
+    <Project Path="tests/HUB.Chat.Application.UnitTests/HUB.Chat.Application.UnitTests.csproj" />
+    <Project Path="tests/HUB.Chat.IntegrationTests/HUB.Chat.IntegrationTests.csproj" />
+    <Project Path="tests/HUB.Notification.Domain.UnitTests/HUB.Notification.Domain.UnitTests.csproj" />
+    <Project Path="tests/HUB.Notification.UnitTests/HUB.Notification.UnitTests.csproj" />
+    <Project Path="tests/HUB.Realtime.UnitTests/HUB.Realtime.UnitTests.csproj" />
+    <Project Path="tests/HUB.Media.Domain.UnitTests/HUB.Media.Domain.UnitTests.csproj" />
+    <Project Path="tests/HUB.DashboardGateway.UnitTests/HUB.DashboardGateway.UnitTests.csproj" />
   </Folder>
 </Solution>

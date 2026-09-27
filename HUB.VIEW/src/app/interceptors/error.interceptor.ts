@@ -5,6 +5,7 @@ import { catchError, throwError } from 'rxjs';
 import { StorageService } from '../core/services/storage.service';
 import { StorageKeys } from '../core/constants/storage-keys.constant';
 import { ConfigService } from '../core/services/config.service';
+import { NavigationService } from '../core/services/navigation.service';
 
 /**
  * Handles HTTP errors globally.
@@ -12,9 +13,10 @@ import { ConfigService } from '../core/services/config.service';
  * Other errors → surface a toast.
  */
 export const errorInterceptor: HttpInterceptorFn = (req, next) => {
-  const toastr  = inject(ToastrService);
-  const storage = inject(StorageService);
-  const config  = inject(ConfigService);
+  const toastr     = inject(ToastrService);
+  const storage    = inject(StorageService);
+  const config     = inject(ConfigService);
+  const navigation = inject(NavigationService);
 
   return next(req).pipe(
     catchError((err: HttpErrorResponse) => {
@@ -22,8 +24,8 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         storage.remove(StorageKeys.accessToken);
         storage.remove(StorageKeys.refreshToken);
         storage.remove(StorageKeys.userProfile);
-        const returnUrl = encodeURIComponent(window.location.href);
-        window.location.href = `${config.dashboardUrl}/login?returnUrl=${returnUrl}`;
+        const returnUrl = encodeURIComponent(navigation.currentUrl());
+        navigation.goTo(`${config.dashboardUrl}/login?returnUrl=${returnUrl}`);
         return throwError(() => err);
       }
 

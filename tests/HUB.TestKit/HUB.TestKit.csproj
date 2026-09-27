@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>HUB.TestKit</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- Shared helper library for the test projects — not itself a test project. -->
+    <IsTestProject>false</IsTestProject>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" />
+    <PackageReference Include="Shouldly" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Services\Chat\HUB.Chat.Application\HUB.Chat.Application.csproj" />
+    <ProjectReference Include="..\..\src\Services\Chat\HUB.Chat.Infrastructure\HUB.Chat.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

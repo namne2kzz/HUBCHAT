@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Caching.Distributed;
 
-namespace HUB.DashboardGateway.Tests;
+namespace HUB.TestKit.Fakes;
 
 /// <summary>Minimal in-memory <see cref="IDistributedCache"/> for tests (ignores expiration).</summary>
 public sealed class FakeDistributedCache : IDistributedCache

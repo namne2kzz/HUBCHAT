@@ -6,12 +6,14 @@ import { LoginResponse, TokenPayload } from '../models/auth.model';
 import { UserProfile } from '../models/user.model';
 import { StorageService } from '../core/services/storage.service';
 import { StorageKeys } from '../core/constants/storage-keys.constant';
+import { NavigationService } from '../core/services/navigation.service';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly http    = inject(HttpClient);
-  private readonly storage = inject(StorageService);
-  private readonly config  = inject(ConfigService);
+  private readonly http       = inject(HttpClient);
+  private readonly storage    = inject(StorageService);
+  private readonly config     = inject(ConfigService);
+  private readonly navigation = inject(NavigationService);
 
   readonly isAuthenticated = signal<boolean>(this.storage.has(StorageKeys.accessToken));
   readonly currentUser     = signal<UserProfile | null>(this.storage.get<UserProfile>(StorageKeys.userProfile));
@@ -50,8 +52,8 @@ export class AuthService {
    */
   logout(): void {
     this.clearSession();
-    const back = encodeURIComponent(`${window.location.origin}/signed-out`);
-    window.location.href = `${this.config.dashboardUrl}/login?logout=1&returnUrl=${back}`;
+    const back = encodeURIComponent(`${this.navigation.origin()}/signed-out`);
+    this.navigation.goTo(`${this.config.dashboardUrl}/login?logout=1&returnUrl=${back}`);
   }
 
   /** Clears local session state without redirecting. */
@@ -65,8 +67,8 @@ export class AuthService {
 
   /** Starts the SSO sign-in flow: redirect to DASHBOARD login, return to the given HUB path. */
   signIn(returnPath = '/channels'): void {
-    const back = encodeURIComponent(`${window.location.origin}${returnPath}`);
-    window.location.href = `${this.config.dashboardUrl}/login?returnUrl=${back}`;
+    const back = encodeURIComponent(`${this.navigation.origin()}${returnPath}`);
+    this.navigation.goTo(`${this.config.dashboardUrl}/login?returnUrl=${back}`);
   }
 
   /** @returns The stored JWT access token, or null. */

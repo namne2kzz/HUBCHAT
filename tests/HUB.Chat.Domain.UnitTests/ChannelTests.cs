@@ -4,7 +4,7 @@ using HUB.Chat.Domain.Enums;
 using Shouldly;
 using Xunit;
 
-namespace HUB.Chat.Domain.Tests;
+namespace HUB.Chat.Domain.UnitTests;
 
 public sealed class ChannelTests
 {

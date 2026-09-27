@@ -103,7 +103,15 @@ src/
     └── Realtime/                        # SignalR hub + presence + fan-out
 
 tests/
-└── HUB.DashboardGateway.Tests
+├── HUB.TestKit                          # shared builders + fakes
+├── HUB.Chat.Domain.UnitTests            # domain invariants (no DB)
+├── HUB.Chat.Application.UnitTests       # CQRS handlers, validators, cursor
+├── HUB.Chat.IntegrationTests            # migrations + WebApi end-to-end (Testcontainers Postgres)
+├── HUB.Notification.Domain.UnitTests
+├── HUB.Notification.UnitTests           # consumer idempotency + handlers
+├── HUB.Realtime.UnitTests               # SignalR fan-out consumer
+├── HUB.Media.Domain.UnitTests
+└── HUB.DashboardGateway.UnitTests
 
 HUB.VIEW/                               # Angular 20 frontend (planned)
 ```
@@ -115,6 +123,10 @@ HUB.VIEW/                               # Angular 20 frontend (planned)
 dotnet restore HUB.slnx
 dotnet build   HUB.slnx -c Release
 dotnet test    HUB.slnx -c Release
+
+# Integration tests start a PostgreSQL container via Testcontainers. Without a Docker
+# daemon, skip them and run the unit suites only:
+dotnet test    HUB.slnx -c Release --filter "Category!=RequiresDocker"
 ```
 
 ## Database Migrations

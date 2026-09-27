@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <RootNamespace>HUB.Chat.Application.UnitTests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <!-- Don't fail the test build on analyzer suggestions. -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
 
@@ -13,9 +13,11 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Shouldly" />
+    <PackageReference Include="coverlet.collector" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Services\DashboardGateway\HUB.DashboardGateway\HUB.DashboardGateway.csproj" />
+    <ProjectReference Include="..\..\src\Services\Chat\HUB.Chat.Application\HUB.Chat.Application.csproj" />
+    <ProjectReference Include="..\HUB.TestKit\HUB.TestKit.csproj" />
   </ItemGroup>
 </Project>

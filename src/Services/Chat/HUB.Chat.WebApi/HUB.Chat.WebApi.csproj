@@ -4,6 +4,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Program.cs uses top-level statements, so the generated Program class is internal.
+         WebApplicationFactory<Program> needs to see it to boot the real API in-process. -->
+    <InternalsVisibleTo Include="HUB.Chat.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\HUB.Chat.Application\HUB.Chat.Application.csproj" />
     <ProjectReference Include="..\HUB.Chat.Infrastructure\HUB.Chat.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\HUB.Shared.Auth\HUB.Shared.Auth.csproj" />

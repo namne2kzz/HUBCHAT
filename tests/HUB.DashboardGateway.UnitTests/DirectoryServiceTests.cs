@@ -1,10 +1,11 @@
 using HUB.DashboardGateway.Dashboard;
 using HUB.DashboardGateway.Directory;
+using HUB.TestKit.Fakes;
 using NSubstitute;
 using Shouldly;
 using Xunit;
 
-namespace HUB.DashboardGateway.Tests;
+namespace HUB.DashboardGateway.UnitTests;
 
 public sealed class DirectoryServiceTests
 {

@@ -43,8 +43,16 @@ jobs:
       - name: Build
         run: dotnet build HUB.slnx --configuration Release --no-restore
 
-      - name: Test
-        run: dotnet test HUB.slnx --configuration Release --no-build --verbosity normal
+      # Split from the integration step so a broken container or a missing Docker daemon reads
+      # differently from a genuine test failure.
+      - name: Test (unit)
+        run: dotnet test HUB.slnx --configuration Release --no-build --verbosity normal --filter "Category!=RequiresDocker"
+
+      # Starts a PostgreSQL container via Testcontainers; ubuntu-latest has a Docker daemon already.
+      # These are the only tests that run the migration chain, so a failure here usually means a
+      # migration, not a test.
+      - name: Test (integration, Testcontainers)
+        run: dotnet test HUB.slnx --configuration Release --no-build --verbosity normal --filter "Category=RequiresDocker"
 
   frontend:
     name: Frontend (Angular 19)
