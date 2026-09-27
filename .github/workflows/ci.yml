@@ -1,21 +1,41 @@
 name: CI
 
 on:
+  # Feature branches are covered by the pull_request trigger, so pushing to one
+  # does not build twice. Direct pushes to main still build on their own.
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
+
+# Cancel superseded runs on rapid pushes to the same ref to save Actions minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  NODE_VERSION: "22"
 
 jobs:
-  build-test:
+  backend:
+    name: Backend (.NET 10)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET 10
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          # Central Package Management → key on Directory.Packages.props
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
 
       - name: Restore
         run: dotnet restore HUB.slnx
@@ -26,14 +46,72 @@ jobs:
       - name: Test
         run: dotnet test HUB.slnx --configuration Release --no-build --verbosity normal
 
-  docker-images:
-    needs: build-test
+  frontend:
+    name: Frontend (Angular 19)
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        working-directory: HUB.VIEW
     steps:
       - uses: actions/checkout@v4
-      - name: Build gateway image
-        run: docker build -f src/Gateway/HUB.Gateway/Dockerfile -t hub-gateway:${{ github.sha }} .
-      - name: Build dashboard-gateway image
-        run: docker build -f src/Services/DashboardGateway/HUB.DashboardGateway/Dockerfile -t hub-dashboard-gateway:${{ github.sha }} .
-      # TODO: trivy scan + push to GHCR/Docker Hub, then deploy over SSH (docker compose pull && up -d)
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: HUB.VIEW/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The two configurations swap in different environment files, so build both:
+      #   production → environment.prod.ts   (enforces bundle budgets)
+      #   docker     → environment.docker.ts (what HUB.VIEW/Dockerfile ships)
+      - name: Build (production)
+        run: npm run build -- --configuration production
+
+      - name: Build (docker)
+        run: npm run build -- --configuration docker
+
+      - name: Test
+        run: npm run test:ci
+
+  docker-images:
+    name: Docker images
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gateway
+            file: src/Gateway/HUB.Gateway/Dockerfile
+          - name: dashboard-gateway
+            file: src/Services/DashboardGateway/HUB.DashboardGateway/Dockerfile
+          - name: chat
+            file: src/Services/Chat/HUB.Chat.WebApi/Dockerfile
+          - name: realtime
+            file: src/Services/Realtime/HUB.Realtime.WebApi/Dockerfile
+          - name: notification
+            file: src/Services/Notification/HUB.Notification.WebApi/Dockerfile
+          - name: media
+            file: src/Services/Media/HUB.Media.WebApi/Dockerfile
+          - name: view
+            file: HUB.VIEW/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.name }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          tags: hub-${{ matrix.name }}:${{ github.sha }}
+          push: false
+          cache-from: type=gha,scope=hub-${{ matrix.name }}
+          cache-to: type=gha,scope=hub-${{ matrix.name }},mode=max

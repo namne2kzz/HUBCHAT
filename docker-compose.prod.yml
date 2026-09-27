@@ -1,0 +1,242 @@
+# HUB — production stack for a self-hosted Docker server.
+#
+# How this differs from docker-compose.yml (local):
+#   - Pulls images from GHCR via `image:` instead of `build:` — the server needs no source
+#   - ONE ${HUB_TAG} drives all seven services, so rollbacks stay version-consistent
+#   - No pgadmin (developer tooling)
+#   - Redis and RabbitMQ point at the DASHBOARD stack over the hub-net network
+#
+# First-time setup on the server:
+#   mkdir -p /opt/hub && cd /opt/hub
+#   # copy this file + .env.prod.example + deploy/otel-collector.yaml
+#   cp .env.prod.example .env && nano .env      # fill in real secrets
+#   docker network create hub-net               # run this BEFORE DASHBOARD
+#   echo <GITHUB_PAT> | docker login ghcr.io -u <user> --password-stdin
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d
+#
+# DEPLOY ORDER: HUB creates hub-net, DASHBOARD joins it. Deploying DASHBOARD before
+# the network exists will fail.
+#
+# NOTE: CD runs `docker compose --env-file .env` without -f, so on the server rename
+# this file to `docker-compose.yml`, or export COMPOSE_FILE=docker-compose.prod.yml
+# in the deploy user's shell profile.
+
+name: hub
+
+services:
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+  postgres:
+    container_name: hub-postgres
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB:       ${POSTGRES_DB:-hub_directory}
+    volumes: ["hub_pg:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    # Production: 5432 is deliberately NOT published.
+
+  minio:
+    container_name: hub-minio
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ROOT_USER:?required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?required}
+    volumes: ["hub_minio:/data"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # S3 API — must be reachable so browsers can fetch presigned URLs
+
+  # ── Observability ───────────────────────────────────────────────────────────
+  jaeger:
+    container_name: hub-jaeger
+    image: jaegertracing/all-in-one:latest
+    restart: unless-stopped
+    # UI port 16686 is NOT exposed to the internet — reach it through an SSH tunnel.
+
+  otel-collector:
+    container_name: hub-otel-collector
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    command: ["--config=/etc/otel-collector.yaml"]
+    volumes:
+      - ./deploy/otel-collector.yaml:/etc/otel-collector.yaml:ro
+    depends_on: [jaeger]
+    restart: unless-stopped
+
+  # ── HUB services ────────────────────────────────────────────────────────────
+  # HUB_TAG is the ONLY line CD rewrites in .env, and it drives all seven services.
+  # Rollback = write the previous tag back and run `up -d`; every service moves together.
+  dashboard-gateway:
+    container_name: hub-dashboard-gateway
+    image: ghcr.io/${GHCR_OWNER:?required}/hub-dashboard-gateway:${HUB_TAG:-latest}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret:   ${JWT_SECRET:?required}
+      Jwt__Issuer:   ${JWT_ISSUER:-dashboard-api}
+      Jwt__Audience: ${JWT_AUDIENCE:-dashboard-spa}
+      InternalApi__Token:         ${INTERNAL_API_TOKEN:?required}
+      Dashboard__InternalBaseUrl: ${DASHBOARD_INTERNAL_BASEURL:?required}
+      Redis__Connection:  ${REDIS_CONNECTION:-redis:6379}
+      RabbitMq__Host:     ${RABBITMQ_HOST:-rabbitmq}
+      RabbitMq__User:     ${RABBITMQ_USER:?required}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:?required}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+    expose: ["8080"]
+    restart: unless-stopped
+    networks: [default, hub-net]   # needs hub-net to reach DASHBOARD's redis/rabbitmq
+
+  chat:
+    container_name: hub-chat
+    image: ghcr.io/${GHCR_OWNER}/hub-chat:${HUB_TAG:-latest}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret:   ${JWT_SECRET}
+      Jwt__Issuer:   ${JWT_ISSUER:-dashboard-api}
+      Jwt__Audience: ${JWT_AUDIENCE:-dashboard-spa}
+      ConnectionStrings__ChatDb: "Host=postgres;Port=5432;Database=hub_chat;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      RabbitMq__Host:     ${RABBITMQ_HOST:-rabbitmq}
+      RabbitMq__User:     ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      # Token DASHBOARD sends via X-Internal-Token when calling /internal/channels/*.
+      InternalApi__Token: ${HUB_CHAT_INTERNAL_TOKEN:?required}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s   # EF migrations run during startup
+    expose: ["8080"]
+    restart: unless-stopped
+    networks: [default, hub-net]   # DASHBOARD reaches http://chat:8080 over this network
+
+  realtime:
+    container_name: hub-realtime
+    image: ghcr.io/${GHCR_OWNER}/hub-realtime:${HUB_TAG:-latest}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret:   ${JWT_SECRET}
+      Jwt__Issuer:   ${JWT_ISSUER:-dashboard-api}
+      Jwt__Audience: ${JWT_AUDIENCE:-dashboard-spa}
+      Redis__Connection:  ${REDIS_CONNECTION:-redis:6379}
+      RabbitMq__Host:     ${RABBITMQ_HOST:-rabbitmq}
+      RabbitMq__User:     ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    expose: ["8080"]
+    restart: unless-stopped
+    networks: [default, hub-net]   # uses DASHBOARD's Redis as the SignalR backplane
+
+  notification:
+    container_name: hub-notification
+    image: ghcr.io/${GHCR_OWNER}/hub-notification:${HUB_TAG:-latest}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret:   ${JWT_SECRET}
+      Jwt__Issuer:   ${JWT_ISSUER:-dashboard-api}
+      Jwt__Audience: ${JWT_AUDIENCE:-dashboard-spa}
+      ConnectionStrings__NotificationDb: "Host=postgres;Port=5432;Database=hub_notif;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      RabbitMq__Host:     ${RABBITMQ_HOST:-rabbitmq}
+      RabbitMq__User:     ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    expose: ["8080"]
+    restart: unless-stopped
+    networks: [default, hub-net]
+
+  media:
+    container_name: hub-media
+    image: ghcr.io/${GHCR_OWNER}/hub-media:${HUB_TAG:-latest}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret:   ${JWT_SECRET}
+      Jwt__Issuer:   ${JWT_ISSUER:-dashboard-api}
+      Jwt__Audience: ${JWT_AUDIENCE:-dashboard-spa}
+      ConnectionStrings__MediaDb: "Host=postgres;Port=5432;Database=hub_media;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      RabbitMq__Host:     ${RABBITMQ_HOST:-rabbitmq}
+      RabbitMq__User:     ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      # Production uses the public hostname so presigned URLs open from a browser.
+      # (Local uses host.docker.internal:9000, which does not exist on a Linux server.)
+      Minio__Endpoint:  ${MINIO_PUBLIC_ENDPOINT:?required}
+      Minio__AccessKey: ${MINIO_ROOT_USER}
+      Minio__SecretKey: ${MINIO_ROOT_PASSWORD}
+      Minio__UseSsl:    ${MINIO_USE_SSL:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio:    { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    expose: ["8080"]
+    restart: unless-stopped
+    networks: [default, hub-net]
+
+  gateway:
+    container_name: hub-gateway
+    image: ghcr.io/${GHCR_OWNER}/hub-gateway:${HUB_TAG:-latest}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Secret:   ${JWT_SECRET}
+      Jwt__Issuer:   ${JWT_ISSUER:-dashboard-api}
+      Jwt__Audience: ${JWT_AUDIENCE:-dashboard-spa}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+    # HUB's only public entry point. CD probes /health here after a deploy.
+    ports: ["${GATEWAY_PORT:-8080}:8080"]
+    depends_on: [dashboard-gateway, chat, realtime, notification, media]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  hub-view:
+    container_name: hub-view
+    image: ghcr.io/${GHCR_OWNER}/hub-view:${HUB_TAG:-latest}
+    ports: ["${VIEW_PORT:-4202}:80"]
+    depends_on: [gateway]
+    restart: unless-stopped
+
+volumes:
+  hub_pg:
+  hub_minio:
+
+# hub-net: the network shared between HUB and DASHBOARD.
+# Create it once by hand: docker network create hub-net
+networks:
+  hub-net:
+    external: true
+    name: hub-net

@@ -1,0 +1,190 @@
+name: CD
+
+# NOT AUTOMATIC YET — runs only when triggered by hand from the Actions tab.
+# Once the secrets are in place and the pipeline has been exercised, add:
+#   push:
+#     branches: [main]
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [staging, production]
+        default: staging
+      push_images:
+        description: Push images to GHCR
+        type: boolean
+        default: true
+      deploy:
+        description: Deploy over SSH after pushing images
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  publish:
+    name: Build & push ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gateway
+            file: src/Gateway/HUB.Gateway/Dockerfile
+          - name: dashboard-gateway
+            file: src/Services/DashboardGateway/HUB.DashboardGateway/Dockerfile
+          - name: chat
+            file: src/Services/Chat/HUB.Chat.WebApi/Dockerfile
+          - name: realtime
+            file: src/Services/Realtime/HUB.Realtime.WebApi/Dockerfile
+          - name: notification
+            file: src/Services/Notification/HUB.Notification.WebApi/Dockerfile
+          - name: media
+            file: src/Services/Media/HUB.Media.WebApi/Dockerfile
+          - name: view
+            file: HUB.VIEW/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: inputs.push_images
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}   # built-in token; no secret to create
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          push: ${{ inputs.push_images }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/hub-${{ matrix.name }}:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/hub-${{ matrix.name }}:latest
+          cache-from: type=gha,scope=hub-${{ matrix.name }}
+          cache-to: type=gha,scope=hub-${{ matrix.name }},mode=max
+
+      - name: Trivy scan
+        if: inputs.push_images
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/hub-${{ matrix.name }}:${{ steps.meta.outputs.tag }}
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "0"   # set to "1" to block the deploy on HIGH/CRITICAL findings
+
+  deploy:
+    name: Deploy (${{ inputs.environment }})
+    needs: publish
+    if: inputs.deploy
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}   # add required reviewers under Settings > Environments
+    steps:
+      - name: Compute image tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # Required secrets: SSH_HOST, SSH_USER, SSH_KEY, DEPLOY_PATH, HEALTH_URL
+      #
+      # The host must carry a docker-compose.yml that uses `image:` (NOT `build:`)
+      # pointing at GHCR, with ONE shared tag across all seven services:
+      #   gateway: image: ghcr.io/namne2kzz/hub-gateway:${HUB_TAG:-latest}
+      #   chat:    image: ghcr.io/namne2kzz/hub-chat:${HUB_TAG:-latest}
+      # plus a sibling .env holding `HUB_TAG=<tag>`. Deploy and rollback rewrite
+      # that single line.
+      #
+      # Note: HUB shares DASHBOARD's Redis and RabbitMQ over the hub-net network,
+      # so deploying HUB must not take the DASHBOARD stack down.
+      #
+      # EF migrations: chat/media/notification each call Database.MigrateAsync() at
+      # startup (in their own Program.cs), so no separate step is needed here.
+      # WARNING: migrations do NOT roll back. The rollback below only reverts the
+      #          images; the schema stays forward, so every migration must remain
+      #          backward-compatible with the preceding image.
+      - name: Deploy with rollback on failure
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 20m
+          envs: NEW_TAG,HEALTH_URL
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            # ── 1. Remember the running tag so there is a way back ─────────────
+            PREV_TAG="$(grep -E '^HUB_TAG=' .env | cut -d= -f2 || echo '')"
+            if [ -z "$PREV_TAG" ]; then
+              echo "No HUB_TAG in .env — treating this as the first deploy; rollback unavailable."
+            else
+              echo "Current tag: $PREV_TAG"
+            fi
+            echo "Deploying tag: $NEW_TAG"
+
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+            # ── 2. Health probe via the gateway — HUB's only public entry point ─
+            wait_healthy() {
+              for i in $(seq 1 40); do
+                if curl -fsS "$HEALTH_URL" > /dev/null 2>&1; then
+                  echo "Healthy after ${i} attempt(s)."
+                  return 0
+                fi
+                echo "Waiting for the gateway to come up... (${i}/40)"
+                sleep 5
+              done
+              return 1
+            }
+
+            # ── 3. Rollback: restore the previous tag across all seven services ─
+            rollback() {
+              if [ -z "$PREV_TAG" ]; then
+                echo "::error::Deploy FAILED and there is no previous tag to fall back to. Manual recovery required."
+                exit 1
+              fi
+              echo "::warning::Deploy FAILED — rolling back to $PREV_TAG"
+              sed -i "s|^HUB_TAG=.*|HUB_TAG=$PREV_TAG|" .env
+              docker compose --env-file .env up -d --remove-orphans
+              if wait_healthy; then
+                echo "::error::Rolled back to $PREV_TAG. Build $NEW_TAG was rejected."
+              else
+                echo "::error::ROLLBACK ALSO FAILED. The service is down — manual recovery required now."
+              fi
+              exit 1
+            }
+
+            # ── 4. Deploy ──────────────────────────────────────────────────────
+            # Write the new tag: create .env if absent, append the line if missing,
+            # only then sed it. (sed -i on a missing file fails, and set -e would
+            # kill the script before the append could run.)
+            # NOTE: HUB's .env also holds JWT_SECRET, POSTGRES_PASSWORD and friends —
+            #       only the HUB_TAG line is ever touched.
+            touch .env
+            grep -q '^HUB_TAG=' .env || echo "HUB_TAG=$NEW_TAG" >> .env
+            sed -i "s|^HUB_TAG=.*|HUB_TAG=$NEW_TAG|" .env
+
+            docker compose --env-file .env pull                    || rollback
+            docker compose --env-file .env up -d --remove-orphans  || rollback
+            wait_healthy                                           || rollback
+
+            echo "Deploy $NEW_TAG succeeded."
+            docker image prune -f
+        env:
+          NEW_TAG:    ${{ steps.meta.outputs.tag }}
+          HEALTH_URL: ${{ secrets.HEALTH_URL }}
