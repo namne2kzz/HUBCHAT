@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\HUB.Shared.Auth\HUB.Shared.Auth.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\HUB.Shared.Contracts\HUB.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\HUB.Shared.Messaging\HUB.Shared.Messaging.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\HUB.Shared.Observability\HUB.Shared.Observability.csproj" />
   </ItemGroup>

@@ -188,16 +188,11 @@ public sealed class AuthenticationTests(PostgresFixture database) : IAsyncLifeti
         created.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var channel = await created.Content.ReadFromJsonAsync<ChannelResponse>();
+
+        // The response reports Owner, which is the proof the uid claim identified the caller: the id
+        // resolved to a membership row carrying that role.
         channel!.IsMember.ShouldBeTrue();
-
-        // Fetching the same channel with the same token reports Owner, which is the proof that the uid
-        // claim identified the caller: the id resolved to a membership row with the Owner role.
-        using var sameUser = As(user);
-        var refetched = await sameUser.GetAsync($"/api/v1/channels/{channel.Id}");
-        refetched.StatusCode.ShouldBe(HttpStatusCode.OK);
-
-        (await refetched.Content.ReadFromJsonAsync<ChannelResponse>())!
-            .MyRole.ShouldBe(2, "the creator is the channel Owner (ChannelMemberRole.Owner)");
+        channel.MyRole.ShouldBe(2, "the creator is the channel Owner (ChannelMemberRole.Owner)");
 
         // A different caller on the same public channel is readable but not a member, which rules out
         // MyRole simply being populated for everybody.
@@ -210,18 +205,12 @@ public sealed class AuthenticationTests(PostgresFixture database) : IAsyncLifeti
     }
 
     [Fact]
-    public async Task TheCreateResponseOmitsMyRoleEvenThoughTheCreatorIsOwner()
+    public async Task CreateAndGetAgreeOnTheCallersRole()
     {
-        // BUG-002, asserted as it currently behaves rather than as it should.
-        //
-        // ChannelMappings.ToDto() takes myRole as an optional parameter defaulting to null, and
-        // CreateChannelHandler calls ToDto() without it — so the POST response says IsMember: true and
-        // MyRole: null, while a GET of the same channel with the same token says MyRole: 2. Three other
-        // handlers have the same shape: UpdateChannel and both branches of OpenLinkedThread.
-        //
-        // A client that reads MyRole to decide whether to show owner controls (rename, archive, transfer)
-        // shows none of them until it refetches. When somebody threads myRole through those four calls,
-        // this test fails and points at the bug entry to close.
+        // Regression for BUG-002, asserted over HTTP because the inconsistency was only visible by
+        // comparing two responses: ToDto took myRole as an optional parameter that five call sites
+        // forgot, so POST returned MyRole: null while GET of the same channel returned Owner. A client
+        // reading MyRole to decide whether to show owner controls showed none until it refetched.
         var user = Guid.NewGuid();
         using var client = As(user);
 
@@ -233,10 +222,14 @@ public sealed class AuthenticationTests(PostgresFixture database) : IAsyncLifeti
             topic       = (string?)null,
         });
 
-        var channel = await created.Content.ReadFromJsonAsync<ChannelResponse>();
+        var posted = await created.Content.ReadFromJsonAsync<ChannelResponse>();
+        posted!.IsMember.ShouldBeTrue();
+        posted.MyRole.ShouldBe(2, "the creator is the Owner (ChannelMemberRole.Owner)");
 
-        channel!.IsMember.ShouldBeTrue("ToDto hardcodes IsMember: true");
-        channel.MyRole.ShouldBeNull("known gap — see BUG-002 in .claude/self-test/bugs.md");
+        var fetched = await (await client.GetAsync($"/api/v1/channels/{posted.Id}"))
+            .Content.ReadFromJsonAsync<ChannelResponse>();
+
+        fetched!.MyRole.ShouldBe(posted.MyRole, "the two endpoints must not disagree");
     }
 
     /// <summary>The subset of ChannelDto these tests read.</summary>

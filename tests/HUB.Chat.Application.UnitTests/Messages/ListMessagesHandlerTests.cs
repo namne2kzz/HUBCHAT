@@ -327,7 +327,7 @@ public sealed class ListMessagesHandlerTests
     }
 
     [Fact]
-    public async Task MessagesSharingATimestampAreNotAllReturnedAcrossPages()
+    public async Task MessagesSharingATimestampAreAllReturnedExactlyOnce()
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();
         var member  = Guid.NewGuid();
@@ -360,16 +360,50 @@ public sealed class ListMessagesHandlerTests
             cursor = result.NextCursor;
         }
 
-        // This documents a known limitation rather than asserting the desired behaviour. The cursor
-        // filters on `CreatedAt <` only — the Id tie-breaker is in the ORDER BY but not in the WHERE —
-        // so every message sharing the boundary timestamp is skipped with it. Four tied messages paged
-        // two at a time therefore yield the first two and lose the rest.
-        //
-        // messages.dod.md already records this under Edge Cases. It is asserted here so the day
-        // somebody adds the tie-breaker, this test fails and points at the note to update rather than
-        // leaving a stale caveat behind.
-        seen.Count.ShouldBe(2,
-            "known gap: the keyset WHERE clause has no Id tie-breaker — see messages.dod.md Edge Cases");
-        seen.Distinct().Count().ShouldBe(seen.Count, "whatever is returned must still not repeat");
+        // The case the Id tie-breaker exists for. Comparing CreatedAt alone skips every message sharing
+        // the boundary timestamp rather than just the boundary row, so these four would come back as
+        // two and the rest would be unreachable on any page. Silent data loss: nothing errors, the
+        // client simply never sees them.
+        seen.Count.ShouldBe(4, "no message may be skipped because it shares a timestamp");
+        seen.Distinct().Count().ShouldBe(4, "and none may be returned twice");
+    }
+
+    [Fact]
+    public async Task PagingIsStableWhenEveryMessageSharesATimestamp()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var member  = Guid.NewGuid();
+        var channel = Channel.Create(Guid.NewGuid(), "General", ChannelType.Public, member);
+        lease.Context.Channels.Add(channel);
+
+        // A whole page worth on one tick, so the boundary itself is a tie on every hop.
+        for (var i = 0; i < 9; i++)
+        {
+            lease.Context.Messages.Add(Message
+                .Post(channel.Id, member, $"tied {i}", MessageFormat.Plain)
+                .WithCreatedAt(Base));
+        }
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var handler = new ListMessagesHandler(lease.Context);
+
+        var seen    = new List<Guid>();
+        string? cursor = null;
+
+        for (var page = 0; page < 10; page++)
+        {
+            var result = await handler.Handle(
+                new ListMessagesQuery(channel.Id, member, cursor, 3), CancellationToken.None);
+
+            seen.AddRange(result.Items.Select(m => m.Id));
+
+            if (result.NextCursor is null) break;
+            cursor = result.NextCursor;
+        }
+
+        // With Id as the sole discriminator the walk has to stay strictly monotonic: a `<=` instead of
+        // `<` would repeat the boundary row forever and never terminate.
+        seen.Count.ShouldBe(9);
+        seen.Distinct().Count().ShouldBe(9);
     }
 }

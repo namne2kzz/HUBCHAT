@@ -36,4 +36,18 @@ public interface IDirectoryService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The settings, or null if the user does not exist.</returns>
     Task<UserSettings?> GetUserSettingsAsync(Guid userId, CancellationToken ct);
+
+    /// <summary>
+    /// Drops the cached directory entries invalidated by a membership change in DASHBOARD.
+    /// </summary>
+    /// <remarks>
+    /// Evicts the repository's member list and the affected user's memberships. Without this, a user
+    /// removed in DASHBOARD keeps passing HUB's membership check until the 3-minute TTL expires, and a
+    /// newly added member stays invisible for up to five.
+    /// </remarks>
+    /// <param name="repositoryId">The repository whose membership changed.</param>
+    /// <param name="userId">The affected user.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes once both entries have been evicted.</returns>
+    Task InvalidateMembershipAsync(Guid repositoryId, Guid userId, CancellationToken ct);
 }

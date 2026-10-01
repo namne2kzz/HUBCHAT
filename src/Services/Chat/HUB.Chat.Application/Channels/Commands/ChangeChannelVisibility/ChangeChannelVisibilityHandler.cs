@@ -32,6 +32,6 @@ public sealed class ChangeChannelVisibilityHandler(IChatDbContext db)
         channel.ChangeVisibility(request.IsPrivate);
         await db.SaveChangesAsync(ct);
 
-        return channel.ToDto(myRole: caller.Role);
+        return channel.ToDto(request.ActingUserId);
     }
 }

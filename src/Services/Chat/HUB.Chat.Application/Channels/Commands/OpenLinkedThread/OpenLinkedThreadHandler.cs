@@ -25,7 +25,7 @@ public sealed class OpenLinkedThreadHandler(IChatDbContext db) : IRequestHandler
                 existing.AddMember(request.ActingUserId);
                 await db.SaveChangesAsync(ct);
             }
-            return existing.ToDto();
+            return existing.ToDto(request.ActingUserId);
         }
 
         var name = string.IsNullOrWhiteSpace(request.Title) ? request.ExternalKey : request.Title;
@@ -34,6 +34,6 @@ public sealed class OpenLinkedThreadHandler(IChatDbContext db) : IRequestHandler
 
         db.Channels.Add(channel);
         await db.SaveChangesAsync(ct);
-        return channel.ToDto();
+        return channel.ToDto(request.ActingUserId);
     }
 }

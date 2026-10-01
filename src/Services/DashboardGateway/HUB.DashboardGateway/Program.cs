@@ -1,3 +1,4 @@
+using HUB.DashboardGateway.Consumers;
 using HUB.DashboardGateway.Dashboard;
 using HUB.DashboardGateway.Directory;
 using HUB.DashboardGateway.Endpoints;
@@ -33,8 +34,12 @@ var redisConnection = builder.Configuration.GetValue<string>("Redis:Connection")
 builder.Services.AddStackExchangeRedisCache(o => o.Configuration = redisConnection);
 builder.Services.AddScoped<IDirectoryService, DirectoryService>();
 
-// ── Messaging (RabbitMQ) — publish-only for now, ready for future consumers ────
-builder.Services.AddHubMessaging(builder.Configuration);
+// ── Messaging (RabbitMQ) ──────────────────────────────────────────────────────
+// Shares DASHBOARD's broker, which is how MemberDirectoryChangedEvent reaches this service: the
+// directory cache is invalidated on the event rather than waiting out its TTL.
+builder.Services.AddHubMessaging(
+    builder.Configuration,
+    bus => bus.AddConsumer<MemberDirectoryChangedConsumer>());
 
 // ── Health checks ─────────────────────────────────────────────────────────────
 builder.Services.AddHealthChecks()

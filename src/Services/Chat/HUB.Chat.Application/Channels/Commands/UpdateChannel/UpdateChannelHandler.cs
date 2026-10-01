@@ -31,6 +31,6 @@ public sealed class UpdateChannelHandler(IChatDbContext db) : IRequestHandler<Up
         channel.UpdateInfo(request.Name, request.Topic);
         await db.SaveChangesAsync(ct);
 
-        return channel.ToDto();
+        return channel.ToDto(request.ActingUserId);
     }
 }

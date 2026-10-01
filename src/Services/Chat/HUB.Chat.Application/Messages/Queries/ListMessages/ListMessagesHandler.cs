@@ -34,9 +34,14 @@ public sealed class ListMessagesHandler(IChatDbContext db) : IRequestHandler<Lis
             .Include(m => m.Attachments)
             .Where(m => m.ChannelId == request.ChannelId && m.ParentId == null && m.DeletedAt == null);
 
-        // Keyset seek: fetch strictly-older rows. Backed by (channel_id, created_at DESC) index.
+        // Keyset seek: fetch rows strictly older than the cursor, ordered by (CreatedAt desc, Id desc).
+        // The Id tie-breaker has to appear here as well as in the ORDER BY — comparing CreatedAt alone
+        // skips *every* message sharing the boundary timestamp, not just the boundary row itself, so a
+        // bulk insert or import that lands several messages on one tick loses all but the first page's
+        // worth. Backed by the (ChannelId, CreatedAt) index.
         if (MessageCursor.TryDecode(request.Cursor) is { } cursor)
-            query = query.Where(m => m.CreatedAt < cursor.CreatedAt);
+            query = query.Where(m => m.CreatedAt < cursor.CreatedAt
+                                  || (m.CreatedAt == cursor.CreatedAt && m.Id < cursor.Id));
 
         var messages = await query
             .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)

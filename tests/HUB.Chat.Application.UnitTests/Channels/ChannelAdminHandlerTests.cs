@@ -85,7 +85,7 @@ public sealed class ChannelAdminHandlerTests
     }
 
     [Fact]
-    public async Task TheCreateResponseOmitsTheCallersRole()
+    public async Task TheCreateResponseReportsTheCallerAsOwner()
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();
 
@@ -93,12 +93,12 @@ public sealed class ChannelAdminHandlerTests
             new CreateChannelCommand(Guid.NewGuid(), "Role Gap", ChannelType.Public, "", Guid.NewGuid()),
             CancellationToken.None);
 
-        // BUG-002, asserted as it behaves rather than as it should. CreateChannelHandler calls ToDto()
-        // without threading myRole, so the response says IsMember: true and MyRole: null even though the
-        // caller is the Owner. UpdateChannel and both OpenLinkedThread branches have the same shape.
-        // See .claude/self-test/bugs.md; when somebody fixes it, this test fails and points there.
+        // Regression for BUG-002. ToDto used to take myRole as an optional parameter that five call
+        // sites forgot, so creating a channel returned MyRole: null while fetching the same channel
+        // returned Owner — and a client reading MyRole showed no owner controls until it refetched.
+        // ToDto now derives the role from the acting user, so it cannot be omitted.
         result.IsMember.ShouldBeTrue();
-        result.MyRole.ShouldBeNull("known gap — see BUG-002");
+        result.MyRole.ShouldBe(ChannelMemberRole.Owner);
     }
 
     // ── Update name and topic: Admin or Owner ───────────────────────────────

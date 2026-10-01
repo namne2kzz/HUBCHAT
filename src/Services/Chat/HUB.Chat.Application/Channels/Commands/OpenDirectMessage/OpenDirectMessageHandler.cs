@@ -29,7 +29,7 @@ public sealed class OpenDirectMessageHandler(IChatDbContext db) : IRequestHandle
                 && c.Members.Any(m => m.UserId == request.TargetUserId), ct);
 
         if (existing is not null)
-            return existing.ToDto(otherUserId: request.TargetUserId);
+            return existing.ToDto(request.ActingUserId, otherUserId: request.TargetUserId);
 
         // Deterministic, unique per-pair name — the display name is resolved client-side via OtherUserId.
         var (a, b) = request.ActingUserId.CompareTo(request.TargetUserId) < 0
@@ -42,6 +42,6 @@ public sealed class OpenDirectMessageHandler(IChatDbContext db) : IRequestHandle
         db.Channels.Add(channel);
         await db.SaveChangesAsync(ct);
 
-        return channel.ToDto(otherUserId: request.TargetUserId);
+        return channel.ToDto(request.ActingUserId, otherUserId: request.TargetUserId);
     }
 }

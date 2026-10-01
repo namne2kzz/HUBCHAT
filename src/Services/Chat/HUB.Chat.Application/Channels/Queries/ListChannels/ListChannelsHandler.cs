@@ -35,7 +35,12 @@ public sealed class ListChannelsHandler(IChatDbContext db) : IRequestHandler<Lis
                 IsMember: c.Members.Any(m => m.UserId == acting),
                 OtherUserId: (c.Type == ChannelType.Dm || c.Type == ChannelType.GroupDm)
                     ? c.Members.Where(m => m.UserId != acting).Select(m => (Guid?)m.UserId).FirstOrDefault()
-                    : null))
+                    : null,
+                // Projected here rather than via ToDto: this is a no-tracking LINQ projection, so the
+                // role has to be a subquery EF can translate. Without it the sidebar cannot tell a
+                // channel the user owns from one they merely joined.
+                MyRole: c.Members.Where(m => m.UserId == acting)
+                    .Select(m => (ChannelMemberRole?)m.Role).FirstOrDefault()))
             .ToListAsync(ct);
     }
 }

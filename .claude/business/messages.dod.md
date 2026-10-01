@@ -4,6 +4,7 @@
 
 | Ngày | Giờ | Title | Thay đổi |
 |------|-----|-------|----------|
+| 2026-09-28 | — | Fix tie-breaker keyset (BUG-003) | `WHERE` thêm `(CreatedAt == cursor.CreatedAt && Id < cursor.Id)` để khớp `ORDER BY`. Message trùng timestamp không còn bị mất. Không đổi API contract. |
 | 2026-09-27 | — | Fix cursor 500 + đo lại tie-breaker gap | `MessageCursor.TryDecode` giờ trả `null` cho tick count ngoài range `DateTime` (trước throw → HTTP 500, xem BUG-001). Tie cùng timestamp **không phải "cực hiếm"** mà là **mất message thật**: test đo được 4 message cùng tick, page size 2 → chỉ trả về 2, 2 cái còn lại không bao giờ xuất hiện. Cập nhật lại mục Edge Cases. |
 | 2026-08-01 | 20:18 | Khởi tạo document | Tạo doc business ban đầu cho feature Messages (P1) |
 
@@ -34,6 +35,6 @@ Tin nhắn trong kênh: top-level hoặc thread reply, hỗ trợ mention, edit,
 - [ ] Unit test domain: empty body→throw, distinct mentions, edit sau delete→throw, reaction idempotent.
 
 ## Edge Cases & Notes
-- **Cursor keyset thiếu tie-breaker → mất message (chưa fix).** `ORDER BY` có `CreatedAt desc, Id desc` nhưng `WHERE` chỉ so `CreatedAt <`, nên **mọi** message cùng timestamp với boundary đều bị nhảy qua cùng lúc. Test `ListMessagesHandlerTests.MessagesSharingATimestampAreNotAllReturnedAcrossPages` đo được: 4 message cùng tick, page size 2 → client chỉ thấy 2, 2 cái còn lại **không bao giờ** trả về ở bất kỳ page nào. Không phải "cực hiếm" như ghi chú cũ — bulk insert / import / seed đều sinh ra trường hợp này. Fix đúng: đưa `Id` vào `WHERE` dạng `(CreatedAt < c.CreatedAt) || (CreatedAt == c.CreatedAt && Id < c.Id)`. Khi fix, test nói trên sẽ fail → cập nhật cả test lẫn mục này.
+- **Cursor keyset có tie-breaker `Id` (fix 2026-09-28 — BUG-003).** `WHERE` phải khớp `ORDER BY (CreatedAt desc, Id desc)`: `(CreatedAt < c.CreatedAt) || (CreatedAt == c.CreatedAt && Id < c.Id)`. Trước đó `WHERE` chỉ so `CreatedAt <` nên **mọi** message cùng timestamp với boundary bị nhảy qua cùng lúc — 4 message cùng tick, page size 2 → client chỉ thấy 2, 2 cái còn lại không bao giờ trả về. Bulk insert / import / seed đều sinh ra trường hợp này, không phải "cực hiếm" như ghi chú ban đầu. Cursor vốn đã mang `Id` sẵn nên fix không đổi API contract.
 - Preview trong `MessageSent` cắt 140 ký tự cho notification.
 - Cursor đến trực tiếp từ query string nên phải chịu được input rác: `TryDecode` trả `null` (bỏ qua cursor, về page đầu) cho base64 sai, payload sai format, và tick count ngoài range `DateTime`. Case cuối trước đây throw `ArgumentOutOfRangeException` → HTTP 500 (BUG-001, đã fix 2026-09-27).

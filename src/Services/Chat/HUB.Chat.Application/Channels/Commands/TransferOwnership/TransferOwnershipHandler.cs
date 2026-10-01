@@ -32,6 +32,6 @@ public sealed class TransferOwnershipHandler(IChatDbContext db)
         channel.TransferOwnership(request.ActingUserId, request.NewOwnerUserId);
         await db.SaveChangesAsync(ct);
 
-        return channel.ToDto(myRole: caller.Role);
+        return channel.ToDto(request.ActingUserId);
     }
 }

@@ -160,20 +160,26 @@ public sealed class ChannelQueryHandlerTests
     }
 
     [Fact]
-    public async Task TheListOmitsTheCallersRole()
+    public async Task TheListReportsTheCallersRolePerChannel()
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();
         var workspace = Guid.NewGuid();
         var owner     = Guid.NewGuid();
-        Seed(lease.Context, workspace, owner);
+        var joined    = Seed(lease.Context, workspace, Guid.NewGuid(), "Joined");
+        joined.AddMember(owner);
+        Seed(lease.Context, workspace, owner, "Owned");
+        Seed(lease.Context, workspace, Guid.NewGuid(), "Stranger");
         await lease.Context.SaveChangesAsync(CancellationToken.None);
 
         var result = await new ListChannelsHandler(lease.Context)
             .Handle(new ListChannelsQuery(workspace, owner), CancellationToken.None);
 
-        // Another BUG-002 site: the projection sets IsMember and OtherUserId but never MyRole, so the
-        // sidebar cannot tell an owned channel from one merely joined without fetching each in turn.
-        result.ShouldHaveSingleItem().MyRole.ShouldBeNull("known gap — see BUG-002");
+        // Regression for BUG-002 in the LINQ projection, which has to compute the role as a subquery
+        // rather than through ToDto. Without it the sidebar cannot tell a channel the user owns from
+        // one they merely joined, short of fetching each in turn.
+        result.Single(c => c.Name == "Owned").MyRole.ShouldBe(ChannelMemberRole.Owner);
+        result.Single(c => c.Name == "Joined").MyRole.ShouldBe(ChannelMemberRole.Member);
+        result.Single(c => c.Name == "Stranger").MyRole.ShouldBeNull("not a member of that one");
     }
 
     // ── Get one channel ─────────────────────────────────────────────────────

@@ -20,6 +20,6 @@ public sealed class CreateChannelHandler(IChatDbContext db) : IRequestHandler<Cr
         db.Channels.Add(channel);
         await db.SaveChangesAsync(ct);
 
-        return channel.ToDto();
+        return channel.ToDto(request.ActingUserId);
     }
 }
