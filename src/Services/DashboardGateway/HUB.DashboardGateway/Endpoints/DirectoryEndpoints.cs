@@ -6,6 +6,9 @@ namespace HUB.DashboardGateway.Endpoints;
 /// <summary>Minimal-API endpoints exposing cached DASHBOARD directory data to authenticated HUB users.</summary>
 public static class DirectoryEndpoints
 {
+    /// <summary>Caps the batch profile lookup so one request cannot ask for an unbounded id list.</summary>
+    private const int MaxBatchUserIds = 100;
+
     /// <summary>Maps the /api/v1/directory routes.</summary>
     /// <param name="app">The web application.</param>
     /// <returns>The same application for chaining.</returns>
@@ -18,6 +21,23 @@ public static class DirectoryEndpoints
         {
             var user = await directory.GetUserAsync(id, ct);
             return user is null ? Results.NotFound() : Results.Ok(user);
+        });
+
+        // Several profiles in one round-trip — for rendering a list of authors or mention chips without
+        // one request per user. Served per-user from cache, so only the ids not already cached are
+        // fetched from DASHBOARD.
+        group.MapGet("/users", async (string ids, IDirectoryService directory, CancellationToken ct) =>
+        {
+            var parsed = ids.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => Guid.TryParse(s, out var g) ? g : (Guid?)null)
+                            .Where(g => g.HasValue)
+                            .Select(g => g!.Value)
+                            .Take(MaxBatchUserIds)
+                            .ToList();
+
+            return parsed.Count == 0
+                ? Results.BadRequest("Provide at least one valid user id in 'ids'.")
+                : Results.Ok(await directory.GetUsersAsync(parsed, ct));
         });
 
         // The caller's own memberships (which projects/workspaces they may access).

@@ -19,5 +19,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Services\Realtime\HUB.Realtime.WebApi\HUB.Realtime.WebApi.csproj" />
+    <ProjectReference Include="..\HUB.TestKit\HUB.TestKit.csproj" />
   </ItemGroup>
 </Project>

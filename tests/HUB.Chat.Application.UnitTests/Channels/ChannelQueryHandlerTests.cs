@@ -1,3 +1,4 @@
+using HUB.Chat.Application.Channels.Queries.CanJoinChannel;
 using HUB.Chat.Application.Channels.Queries.GetChannel;
 using HUB.Chat.Application.Channels.Queries.ListChannelMembers;
 using HUB.Chat.Application.Channels.Queries.ListChannels;
@@ -336,5 +337,67 @@ public sealed class ChannelQueryHandlerTests
 
         result.Single(m => m.UserId == admin).Role.ShouldBe(ChannelMemberRole.Admin);
         result.Single(m => m.UserId == owner).Role.ShouldBe(ChannelMemberRole.Owner);
+    }
+
+    // ── Can-join (realtime subscription guard) ──────────────────────────────
+    //
+    // This answers the check the realtime hub runs before adding a connection to a channel's SignalR
+    // group. It must agree with ListMessages: a user allowed into the group but refused by the message
+    // query would receive pushed messages while unable to load history, and the reverse would silently
+    // drop messages they are entitled to.
+
+    [Fact]
+    public async Task AnyoneMayJoinAPublicChannel()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var channel = Seed(lease.Context, Guid.NewGuid(), Guid.NewGuid());
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var allowed = await new CanJoinChannelHandler(lease.Context)
+            .Handle(new CanJoinChannelQuery(channel.Id, Guid.NewGuid()), CancellationToken.None);
+
+        allowed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task AnOutsiderMayNotJoinAPrivateChannel()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var channel = Seed(lease.Context, Guid.NewGuid(), Guid.NewGuid(), "Secret", ChannelType.Private);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var allowed = await new CanJoinChannelHandler(lease.Context)
+            .Handle(new CanJoinChannelQuery(channel.Id, Guid.NewGuid()), CancellationToken.None);
+
+        // This is the hole the guard closes: before it, knowing the id was enough to receive the stream.
+        allowed.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task AMemberMayJoinAPrivateChannel()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var member  = Guid.NewGuid();
+        var channel = Seed(lease.Context, Guid.NewGuid(), Guid.NewGuid(), "Secret", ChannelType.Private);
+        channel.AddMember(member);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var allowed = await new CanJoinChannelHandler(lease.Context)
+            .Handle(new CanJoinChannelQuery(channel.Id, member), CancellationToken.None);
+
+        allowed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task AMissingChannelIsNotJoinable()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+
+        var allowed = await new CanJoinChannelHandler(lease.Context)
+            .Handle(new CanJoinChannelQuery(Guid.NewGuid(), Guid.NewGuid()), CancellationToken.None);
+
+        // Returns false rather than throwing: the caller is a hub deciding whether to add a connection,
+        // so it must not create a group for an id that does not exist.
+        allowed.ShouldBeFalse();
     }
 }

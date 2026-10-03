@@ -146,6 +146,9 @@ services:
       Jwt__Secret: ${JWT_SECRET}
       Jwt__Issuer: ${JWT_ISSUER}
       Jwt__Audience: ${JWT_AUDIENCE}
+      # Needed by the JoinChannel membership check, which calls chat-service's /internal API.
+      InternalApi__Token: ${INTERNAL_API_TOKEN}
+      Chat__InternalBaseUrl: "http://chat:8080/"
       Redis__Connection: ${REDIS_CONNECTION}
       RabbitMq__Host: ${RABBITMQ_HOST}
       RabbitMq__User: ${RABBITMQ_USER}

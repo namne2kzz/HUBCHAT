@@ -3,6 +3,7 @@ using HUB.Chat.Application.Channels.Commands.ArchiveChannel;
 using HUB.Chat.Application.Channels.Commands.FindOrCreateSprintChannel;
 using HUB.Chat.Application.Channels.Commands.RemoveChannelMember;
 using HUB.Chat.Application.Channels.DTOs;
+using HUB.Chat.Application.Channels.Queries.CanJoinChannel;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -35,6 +36,25 @@ public sealed class InternalChannelsController(ISender mediator) : ControllerBas
         var dto = await mediator.Send(new FindOrCreateSprintChannelCommand(
             request.WorkspaceId, request.SprintId, request.SprintName, request.CreatorUserId), ct);
         return Ok(dto);
+    }
+
+    /// <summary>
+    /// Reports whether a user may subscribe to a channel's realtime stream.
+    /// </summary>
+    /// <remarks>
+    /// Consumed by the realtime service before adding a connection to a SignalR group. Returns 200 with
+    /// a boolean rather than 403, because the caller is deciding, not being denied.
+    /// </remarks>
+    /// <param name="channelId">Channel the user wants to join.</param>
+    /// <param name="userId">The user asking to join.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>200 with <c>{ "allowed": true|false }</c>.</returns>
+    [HttpGet("{channelId:guid}/can-join/{userId:guid}")]
+    [ProducesResponseType<CanJoinChannelResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> CanJoin(Guid channelId, Guid userId, CancellationToken ct)
+    {
+        var allowed = await mediator.Send(new CanJoinChannelQuery(channelId, userId), ct);
+        return Ok(new CanJoinChannelResponse(allowed));
     }
 
     /// <summary>
@@ -83,6 +103,10 @@ public sealed class InternalChannelsController(ISender mediator) : ControllerBas
 }
 
 // ── Request records ───────────────────────────────────────────────────────────
+
+/// <summary>Whether a user may subscribe to a channel's realtime stream.</summary>
+/// <param name="Allowed">True when the channel is public or the user is a member.</param>
+public sealed record CanJoinChannelResponse(bool Allowed);
 
 /// <summary>Payload for the find-or-create sprint channel endpoint.</summary>
 public sealed record FindOrCreateSprintChannelRequest(

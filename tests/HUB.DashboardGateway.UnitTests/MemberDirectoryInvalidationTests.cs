@@ -154,4 +154,190 @@ public sealed class MemberDirectoryInvalidationTests
         await consumer.Consume(context);
         await Should.NotThrowAsync(() => consumer.Consume(context));
     }
+
+    // ── DirectoryEntryChangedEvent: profile / settings / work item ───────────
+
+    private static ConsumeContext<DirectoryEntryChangedEvent> EntryContext(DirectoryEntryKind kind, Guid id)
+    {
+        var context = Substitute.For<ConsumeContext<DirectoryEntryChangedEvent>>();
+        context.Message.Returns(new DirectoryEntryChangedEvent(kind, id));
+        context.CancellationToken.Returns(Ct);
+        return context;
+    }
+
+    private static DirectoryEntryChangedConsumer EntryConsumer(IDirectoryService directory) =>
+        new(directory, NullLogger<DirectoryEntryChangedConsumer>.Instance);
+
+    [Fact]
+    public async Task ProfileEvent_ForcesTheNextProfileReadToPullAgain()
+    {
+        var userId = Guid.NewGuid();
+
+        var dashboard = Substitute.For<IDashboardClient>();
+        dashboard.GetUserAsync(userId, Arg.Any<CancellationToken>()).Returns(Profile(userId));
+
+        var service = new DirectoryService(dashboard, new FakeDistributedCache());
+
+        await service.GetUserAsync(userId, Ct);
+        await EntryConsumer(service).Consume(EntryContext(DirectoryEntryKind.UserProfile, userId));
+        await service.GetUserAsync(userId, Ct);
+
+        // IsGlobalAdmin and IsDeleted ride on this entry, so a stale copy is a privilege problem, not
+        // just a wrong display name.
+        await dashboard.Received(2).GetUserAsync(userId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SettingsEvent_EvictsSettingsAndLeavesTheProfileAlone()
+    {
+        var userId = Guid.NewGuid();
+
+        var dashboard = Substitute.For<IDashboardClient>();
+        dashboard.GetUserAsync(userId, Arg.Any<CancellationToken>()).Returns(Profile(userId));
+        dashboard.GetUserSettingsAsync(userId, Arg.Any<CancellationToken>())
+                 .Returns(new UserSettings(new Dictionary<string, string?> { ["ui.timezone"] = "UTC" }));
+
+        var service = new DirectoryService(dashboard, new FakeDistributedCache());
+
+        await service.GetUserAsync(userId, Ct);
+        await service.GetUserSettingsAsync(userId, Ct);
+
+        await EntryConsumer(service).Consume(EntryContext(DirectoryEntryKind.UserSettings, userId));
+
+        await service.GetUserSettingsAsync(userId, Ct);
+        await service.GetUserAsync(userId, Ct);
+
+        await dashboard.Received(2).GetUserSettingsAsync(userId, Arg.Any<CancellationToken>());
+        await dashboard.Received(1).GetUserAsync(userId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WorkItemEvent_EvictsOnlyThatWorkItem()
+    {
+        var changed = Guid.NewGuid();
+        var other   = Guid.NewGuid();
+
+        var dashboard = Substitute.For<IDashboardClient>();
+        dashboard.GetWorkItemAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                 .Returns(c => new WorkItemContext(c.Arg<Guid>(), "DASH-1", "Title", "Active", Guid.NewGuid(), "DASH"));
+
+        var service = new DirectoryService(dashboard, new FakeDistributedCache());
+
+        await service.GetWorkItemAsync(changed, Ct);
+        await service.GetWorkItemAsync(other, Ct);
+
+        await EntryConsumer(service).Consume(EntryContext(DirectoryEntryKind.WorkItem, changed));
+
+        await service.GetWorkItemAsync(changed, Ct);
+        await service.GetWorkItemAsync(other, Ct);
+
+        await dashboard.Received(2).GetWorkItemAsync(changed, Arg.Any<CancellationToken>());
+        await dashboard.Received(1).GetWorkItemAsync(other, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UnknownKind_IsLoggedRatherThanThrown()
+    {
+        var directory = Substitute.For<IDirectoryService>();
+
+        // A kind DASHBOARD might add before this consumer handles it: retrying cannot help, so the
+        // message must not be dead-lettered.
+        await Should.NotThrowAsync(() =>
+            EntryConsumer(directory).Consume(EntryContext((DirectoryEntryKind)99, Guid.NewGuid())));
+    }
+
+    // ── Batch profile lookup ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetUsers_PullsOnlyTheIdsNotAlreadyCached()
+    {
+        var cachedUser = Guid.NewGuid();
+        var freshUser  = Guid.NewGuid();
+
+        var dashboard = Substitute.For<IDashboardClient>();
+        dashboard.GetUserAsync(cachedUser, Arg.Any<CancellationToken>()).Returns(Profile(cachedUser));
+        dashboard.GetUsersAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
+                 .Returns(c => c.Arg<IReadOnlyCollection<Guid>>().Select(Profile).ToList());
+
+        var service = new DirectoryService(dashboard, new FakeDistributedCache());
+
+        // Warmed through the single-user path — the batch path must reuse that entry, which is the
+        // whole point of keying per user instead of per batch.
+        await service.GetUserAsync(cachedUser, Ct);
+
+        var result = await service.GetUsersAsync([cachedUser, freshUser], Ct);
+
+        result.Select(p => p.Id).ShouldBe(new[] { cachedUser, freshUser }, ignoreOrder: true);
+        await dashboard.Received(1).GetUsersAsync(
+            Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(freshUser)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetUsers_SkipsTheUpstreamCallEntirelyWhenEverythingIsCached()
+    {
+        var userId = Guid.NewGuid();
+
+        var dashboard = Substitute.For<IDashboardClient>();
+        dashboard.GetUserAsync(userId, Arg.Any<CancellationToken>()).Returns(Profile(userId));
+
+        var service = new DirectoryService(dashboard, new FakeDistributedCache());
+
+        await service.GetUserAsync(userId, Ct);
+        await service.GetUsersAsync([userId], Ct);
+
+        await dashboard.DidNotReceive().GetUsersAsync(
+            Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetUsers_WarmsTheSameKeysTheSingleUserPathReads()
+    {
+        var userId = Guid.NewGuid();
+
+        var dashboard = Substitute.For<IDashboardClient>();
+        dashboard.GetUsersAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
+                 .Returns([Profile(userId)]);
+
+        var service = new DirectoryService(dashboard, new FakeDistributedCache());
+
+        await service.GetUsersAsync([userId], Ct);
+        var single = await service.GetUserAsync(userId, Ct);
+
+        single!.Name.ShouldBe("Nam");
+        await dashboard.DidNotReceive().GetUserAsync(userId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetUsers_ProfileEventEvictsAnEntryWarmedByTheBatchPath()
+    {
+        var userId = Guid.NewGuid();
+
+        var dashboard = Substitute.For<IDashboardClient>();
+        dashboard.GetUsersAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
+                 .Returns([Profile(userId)]);
+
+        var service = new DirectoryService(dashboard, new FakeDistributedCache());
+
+        await service.GetUsersAsync([userId], Ct);
+        await EntryConsumer(service).Consume(EntryContext(DirectoryEntryKind.UserProfile, userId));
+        await service.GetUsersAsync([userId], Ct);
+
+        // A batch-shaped cache key could not be reached by a single user's invalidation; per-user keys
+        // can, and this is the test that would fail if someone changed that.
+        await dashboard.Received(2).GetUsersAsync(
+            Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetUsers_ReturnsEmptyWithoutCallingUpstream_WhenNoIdsGiven()
+    {
+        var dashboard = Substitute.For<IDashboardClient>();
+        var service   = new DirectoryService(dashboard, new FakeDistributedCache());
+
+        (await service.GetUsersAsync([], Ct)).ShouldBeEmpty();
+
+        await dashboard.DidNotReceive().GetUsersAsync(
+            Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>());
+    }
 }

@@ -39,7 +39,11 @@ builder.Services.AddScoped<IDirectoryService, DirectoryService>();
 // directory cache is invalidated on the event rather than waiting out its TTL.
 builder.Services.AddHubMessaging(
     builder.Configuration,
-    bus => bus.AddConsumer<MemberDirectoryChangedConsumer>());
+    bus =>
+    {
+        bus.AddConsumer<MemberDirectoryChangedConsumer>();
+        bus.AddConsumer<DirectoryEntryChangedConsumer>();
+    });
 
 // ── Health checks ─────────────────────────────────────────────────────────────
 builder.Services.AddHealthChecks()

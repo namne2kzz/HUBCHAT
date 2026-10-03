@@ -255,13 +255,14 @@ export class ChannelMembersPanelComponent implements OnChanges {
 
         this.presence.fetchStatuses(dtos.map(d => d.userId)).subscribe();
 
-        dtos.forEach((dto, i) => {
-          this.directory.getUser(dto.userId).subscribe({
-            next: profile => this.members.update(
-              rs => rs.map((r, ri) => ri === i ? { ...r, profile } : r)
-            ),
-            error: () => { /* keep null profile */ },
-          });
+        // One request for every profile rather than one per member — a 30-member channel used to fire
+        // 30 requests here. Rows keep their null profile if the lookup fails.
+        this.directory.getUsers(dtos.map(d => d.userId)).subscribe({
+          next: profiles => {
+            const byId = new Map(profiles.map(p => [p.id, p]));
+            this.members.update(rs => rs.map(r => ({ ...r, profile: byId.get(r.dto.userId) ?? null })));
+          },
+          error: () => { /* keep null profiles */ },
         });
       },
       error: () => { this.loading.set(false); this.error.set(true); },

@@ -321,12 +321,16 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   private resolveAuthors(msgs: MessageDto[]): void {
     const known   = this.authors();
     const missing = [...new Set(msgs.map(m => m.authorId))].filter(id => !known[id]);
-    for (const id of missing) {
-      this.directory.getUser(id).subscribe({
-        next: user => this.authors.update(a => ({ ...a, [id]: user })),
-        error: () => { /* show short id */ },
-      });
-    }
+    if (!missing.length) return;
+
+    // One request for the whole page's authors — a page with 15 distinct authors used to fire 15.
+    this.directory.getUsers(missing).subscribe({
+      next: users => this.authors.update(a => ({
+        ...a,
+        ...Object.fromEntries(users.map(u => [u.id, u])),
+      })),
+      error: () => { /* show short id */ },
+    });
   }
 
   private subscribeRealtime(): void {

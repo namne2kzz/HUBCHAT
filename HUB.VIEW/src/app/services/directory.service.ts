@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, of, shareReplay } from 'rxjs';
+import { forkJoin, map, Observable, of, shareReplay, tap } from 'rxjs';
 import { ConfigService } from '../core/services/config.service';
 import { DirectoryUser, UserMemberships, WorkItemContext } from '../models/directory.model';
 
@@ -28,6 +28,36 @@ export class DirectoryService {
       this.userCache.set(id, cached);
     }
     return cached;
+  }
+
+  /**
+   * Gets several user profiles in one request, reusing whatever {@link getUser} already memoised.
+   * @param ids User ids; duplicates are ignored.
+   * @returns Observable of the profiles that exist, in no guaranteed order.
+   */
+  getUsers(ids: readonly string[]): Observable<DirectoryUser[]> {
+    const wanted = [...new Set(ids)];
+    if (!wanted.length) return of([]);
+
+    const cached  = wanted.filter(id => this.userCache.has(id));
+    const missing = wanted.filter(id => !this.userCache.has(id));
+
+    // Every id already memoised — no request at all.
+    if (!missing.length) return forkJoin(cached.map(id => this.getUser(id)));
+
+    // One request for the whole missing set, then seeded into the per-id cache so a later getUser()
+    // for any of them is served without another round-trip.
+    const fetched$ = this.http
+      .get<DirectoryUser[]>(`${this.apiUrl}/users`, { params: { ids: missing.join(',') } })
+      .pipe(
+        tap(profiles => profiles.forEach(p => this.userCache.set(p.id, of(p).pipe(shareReplay(1))))),
+        shareReplay(1),
+      );
+
+    return cached.length
+      ? forkJoin([fetched$, ...cached.map(id => this.getUser(id))]).pipe(
+          map(([fresh, ...rest]) => [...fresh, ...rest]))
+      : fetched$;
   }
 
   /** Gets the caller's repository/workspace memberships. @returns Observable of memberships. */

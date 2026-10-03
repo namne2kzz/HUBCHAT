@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using HUB.Realtime.WebApi.Channels;
 using HUB.Realtime.WebApi.Presence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
@@ -7,8 +8,9 @@ namespace HUB.Realtime.WebApi.Hubs;
 
 /// <summary>SignalR hub for realtime chat: channel groups, typing, and presence. Backed by a Redis backplane.</summary>
 /// <param name="presence">Redis presence store (online/away tracking).</param>
+/// <param name="channelAccess">Cached membership check guarding channel subscriptions.</param>
 [Authorize]
-public sealed class ChatHub(IPresenceStore presence) : Hub
+public sealed class ChatHub(IPresenceStore presence, IChannelAccessService channelAccess) : Hub
 {
     /// <summary>Group name for a channel's subscribers.</summary>
     public static string ChannelGroup(Guid channelId) => $"channel:{channelId}";
@@ -39,9 +41,23 @@ public sealed class ChatHub(IPresenceStore presence) : Hub
 
     /// <summary>Subscribes the caller's connection to a channel's realtime stream.</summary>
     /// <param name="channelId">Channel to join.</param>
-    /// <remarks>P1: membership not re-checked here — add a chat-service/membership-cache check before GA.</remarks>
-    public Task JoinChannel(Guid channelId) =>
-        Groups.AddToGroupAsync(Context.ConnectionId, ChannelGroup(channelId));
+    /// <remarks>
+    /// Membership is verified against chat-service (cached) before the connection joins the group. Without
+    /// this, knowing a channel id was enough to receive every message pushed to it. Throws
+    /// <see cref="HubException"/> on refusal so the client sees the rejection instead of silently joining
+    /// nothing.
+    /// </remarks>
+    /// <exception cref="HubException">Thrown when the caller is unauthenticated or not allowed to join.</exception>
+    public async Task JoinChannel(Guid channelId)
+    {
+        if (CurrentUserId() is not { } userId)
+            throw new HubException("Not authenticated.");
+
+        if (!await channelAccess.CanJoinAsync(channelId, userId, Context.ConnectionAborted))
+            throw new HubException("You are not allowed to join this channel.");
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, ChannelGroup(channelId));
+    }
 
     /// <summary>Unsubscribes the caller's connection from a channel.</summary>
     /// <param name="channelId">Channel to leave.</param>
