@@ -122,6 +122,8 @@ services:
       Jwt__Issuer: ${JWT_ISSUER}
       Jwt__Audience: ${JWT_AUDIENCE}
       ConnectionStrings__ChatDb: "Host=postgres;Port=5432;Database=hub_chat;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      # Caller ManageChannels check (add/remove member) — relays the user JWT to dashboard-gateway.
+      DashboardGateway__BaseUrl: "http://dashboard-gateway:8080/"
       RabbitMq__Host: ${RABBITMQ_HOST}
       RabbitMq__User: ${RABBITMQ_USER}
       RabbitMq__Password: ${RABBITMQ_PASSWORD}

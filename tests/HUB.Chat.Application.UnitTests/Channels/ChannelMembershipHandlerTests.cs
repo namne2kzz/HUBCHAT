@@ -9,6 +9,8 @@ using HUB.Chat.Domain.Entities;
 using HUB.Chat.Domain.Enums;
 using HUB.Chat.Infrastructure.Persistence;
 using HUB.TestKit.Db;
+using HUB.TestKit.Fakes;
+using HUB.Chat.Application.Common.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;
 using Xunit;
@@ -157,7 +159,7 @@ public sealed class ChannelMembershipHandlerTests
         var channel = await SeedChannelAsync(lease.Context, Guid.NewGuid());
 
         var userId = Guid.NewGuid();
-        var result = await new AddChannelMemberHandler(lease.Context)
+        var result = await new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
             .Handle(new AddChannelMemberCommand(channel.Id, userId), CancellationToken.None);
 
         result.UserId.ShouldBe(userId);
@@ -171,7 +173,7 @@ public sealed class ChannelMembershipHandlerTests
         var channel = await SeedChannelAsync(lease.Context, Guid.NewGuid());
 
         var userId  = Guid.NewGuid();
-        var handler = new AddChannelMemberHandler(lease.Context);
+        var handler = new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions());
         var command = new AddChannelMemberCommand(channel.Id, userId);
 
         await handler.Handle(command, CancellationToken.None);
@@ -188,7 +190,7 @@ public sealed class ChannelMembershipHandlerTests
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();
 
-        await Should.ThrowAsync<NotFoundException>(() => new AddChannelMemberHandler(lease.Context)
+        await Should.ThrowAsync<NotFoundException>(() => new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
             .Handle(new AddChannelMemberCommand(Guid.NewGuid(), Guid.NewGuid()), CancellationToken.None));
     }
 
@@ -199,7 +201,7 @@ public sealed class ChannelMembershipHandlerTests
         var owner   = Guid.NewGuid();
         var channel = await SeedChannelAsync(lease.Context, owner);
 
-        var result = await new AddChannelMemberHandler(lease.Context)
+        var result = await new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
             .Handle(new AddChannelMemberCommand(channel.Id, owner), CancellationToken.None);
 
         // Sprint sync includes the creator in the member list it replays. Re-adding them as a plain
@@ -219,7 +221,7 @@ public sealed class ChannelMembershipHandlerTests
         channel.AddMember(userId);
         await lease.Context.SaveChangesAsync(CancellationToken.None);
 
-        await new RemoveChannelMemberHandler(lease.Context)
+        await new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
             .Handle(new RemoveChannelMemberCommand(channel.Id, userId), CancellationToken.None);
 
         (await MemberCountAsync(lease, channel.Id)).ShouldBe(1);
@@ -234,7 +236,7 @@ public sealed class ChannelMembershipHandlerTests
         // Documented as silently succeeding: DASHBOARD dropping a capacity member should not fail
         // because HUB never had them. The domain would throw, so the handler's HasMember guard is what
         // makes this work.
-        await Should.NotThrowAsync(() => new RemoveChannelMemberHandler(lease.Context)
+        await Should.NotThrowAsync(() => new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
             .Handle(new RemoveChannelMemberCommand(channel.Id, Guid.NewGuid()), CancellationToken.None));
 
         (await MemberCountAsync(lease, channel.Id)).ShouldBe(1);
@@ -251,8 +253,114 @@ public sealed class ChannelMembershipHandlerTests
 
         // The HasMember guard makes removal idempotent, but it must not also swallow the last-owner
         // invariant — an internal caller should not be able to strand a channel either.
-        await Should.ThrowAsync<DomainException>(() => new RemoveChannelMemberHandler(lease.Context)
+        await Should.ThrowAsync<DomainException>(() => new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
             .Handle(new RemoveChannelMemberCommand(channel.Id, owner), CancellationToken.None));
+    }
+
+    // ── Add / remove member (public API — permission-checked) ───────────────
+
+    [Fact]
+    public async Task APlainUserCannotAddThemselvesToSomeoneElsesPrivateChannel()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var channel  = await SeedChannelAsync(lease.Context, Guid.NewGuid(), ChannelType.Private);
+        var stranger = Guid.NewGuid();
+
+        // The exploit this closes: the public endpoint used to add whoever asked, so knowing a private
+        // channel's id was enough to join it and read everything.
+        await Should.ThrowAsync<ForbiddenException>(() =>
+            new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+                .Handle(new AddChannelMemberCommand(channel.Id, stranger, stranger), CancellationToken.None));
+
+        (await MemberCountAsync(lease, channel.Id)).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task APlainMemberCannotRemoveOthers()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var owner   = Guid.NewGuid();
+        var member  = Guid.NewGuid();
+        var channel = await SeedChannelAsync(lease.Context, owner);
+        channel.AddMember(member);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        await Should.ThrowAsync<ForbiddenException>(() =>
+            new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+                .Handle(new RemoveChannelMemberCommand(channel.Id, owner, member), CancellationToken.None));
+
+        (await MemberCountAsync(lease, channel.Id)).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task ARefusedRemovalOfANonMemberIsStillForbidden()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var channel = await SeedChannelAsync(lease.Context, Guid.NewGuid(), ChannelType.Private);
+
+        // The permission check runs before the "not a member → no-op" shortcut; otherwise a stranger
+        // could tell members from non-members by which ids return 204 vs 403.
+        await Should.ThrowAsync<ForbiddenException>(() =>
+            new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+                .Handle(new RemoveChannelMemberCommand(channel.Id, Guid.NewGuid(), Guid.NewGuid()), CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(ChannelMemberRole.Owner)]
+    [InlineData(ChannelMemberRole.Admin)]
+    public async Task OwnersAndAdminsManageMembersWithoutAskingTheWorkspace(ChannelMemberRole role)
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var owner   = Guid.NewGuid();
+        var channel = await SeedChannelAsync(lease.Context, owner);
+        var manager = owner;
+        if (role == ChannelMemberRole.Admin)
+        {
+            manager = Guid.NewGuid();
+            channel.AddMember(manager, ChannelMemberRole.Admin);
+            await lease.Context.SaveChangesAsync(CancellationToken.None);
+        }
+
+        var permissions = new FakeWorkspacePermissions();
+        var newcomer    = Guid.NewGuid();
+
+        await new AddChannelMemberHandler(lease.Context, permissions)
+            .Handle(new AddChannelMemberCommand(channel.Id, newcomer, manager), CancellationToken.None);
+        await new RemoveChannelMemberHandler(lease.Context, permissions)
+            .Handle(new RemoveChannelMemberCommand(channel.Id, newcomer, manager), CancellationToken.None);
+
+        // The channel role is enough, so the dashboard-gateway hop is never paid.
+        permissions.Calls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ManageChannelsInTheChannelsWorkspaceIsEnoughWithoutAChannelRole()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var channel     = await SeedChannelAsync(lease.Context, Guid.NewGuid());
+        var workspaceMgr = Guid.NewGuid(); // not a channel member at all
+        var permissions = new FakeWorkspacePermissions()
+            .Grant(channel.WorkspaceId, WorkspacePermissionNames.ManageChannels);
+
+        var added = await new AddChannelMemberHandler(lease.Context, permissions)
+            .Handle(new AddChannelMemberCommand(channel.Id, Guid.NewGuid(), workspaceMgr), CancellationToken.None);
+
+        added.Role.ShouldBe(ChannelMemberRole.Member);
+    }
+
+    [Fact]
+    public async Task ManageChannelsInAnotherWorkspaceDoesNotCount()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var channel     = await SeedChannelAsync(lease.Context, Guid.NewGuid());
+        var otherWsMgr  = Guid.NewGuid();
+        var permissions = new FakeWorkspacePermissions()
+            .Grant(Guid.NewGuid(), WorkspacePermissionNames.ManageChannels);
+
+        // Workspace-scoped: managing channels in project A says nothing about project B's channels.
+        await Should.ThrowAsync<ForbiddenException>(() =>
+            new AddChannelMemberHandler(lease.Context, permissions)
+                .Handle(new AddChannelMemberCommand(channel.Id, Guid.NewGuid(), otherWsMgr), CancellationToken.None));
     }
 
     // ── Mark read ───────────────────────────────────────────────────────────

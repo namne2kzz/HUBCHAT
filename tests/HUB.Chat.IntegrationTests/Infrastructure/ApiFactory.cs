@@ -1,5 +1,6 @@
 using HUB.Chat.Application.Common.Interfaces;
 using HUB.Chat.Infrastructure.Persistence;
+using HUB.TestKit.Fakes;
 using MassTransit;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -82,8 +83,16 @@ public sealed class ApiFactory(PostgresFixture database) : WebApplicationFactory
         {
             ReplaceDbContext(services);
             RemoveMessageBroker(services);
+
+            // No dashboard-gateway in the test environment: workspace permissions come from a fake the
+            // test configures through WorkspacePermissions. Channel roles still decide most cases.
+            services.RemoveAll<IWorkspacePermissions>();
+            services.AddSingleton<IWorkspacePermissions>(WorkspacePermissions);
         });
     }
+
+    /// <summary>Workspace permissions every request in this factory sees (e.g. grant ManageChannels).</summary>
+    public FakeWorkspacePermissions WorkspacePermissions { get; } = new();
 
     private void ReplaceDbContext(IServiceCollection services)
     {

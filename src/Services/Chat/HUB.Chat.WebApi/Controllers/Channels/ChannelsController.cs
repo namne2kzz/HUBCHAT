@@ -130,7 +130,7 @@ public sealed class ChannelsController(ISender mediator, ICurrentUser currentUse
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RemoveMember(Guid id, Guid userId, CancellationToken ct)
     {
-        await mediator.Send(new RemoveChannelMemberCommand(id, userId), ct);
+        await mediator.Send(new RemoveChannelMemberCommand(id, userId, currentUser.Id), ct);
         return NoContent();
     }
 

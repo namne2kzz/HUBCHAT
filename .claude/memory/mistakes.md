@@ -359,3 +359,10 @@ At-least-once ⇒ double-delivery bình thường. ✅ dedupe theo `EventId`.
 
 ### ⚠️ SignalR JoinChannel chưa check membership (P1 TODO)
 Trước GA phải verify user là member kênh (gọi chat-service / membership-cache) trước khi `AddToGroupAsync`.
+
+### ❌ Endpoint public tái dùng command của internal API mà không có actor
+Command "trusted" (internal/service-token) không check quyền là đúng — nhưng gắn nó vào endpoint public là mở toang (MP-3A: ai cũng tự add mình vào kênh private / kick bất kỳ ai).
+✅ Actor là **tham số tường minh** của command (`Guid? ActingUserId`): `null` = hệ thống (chỉ internal controller được truyền null), có giá trị = check quyền trong handler (`ChannelMemberManagement.EnsureCanManageMembersAsync`). Check quyền **trước** mọi nhánh no-op để không lộ thông tin qua mã trả về.
+
+### ❌ Check-then-insert để chống trùng
+Luôn có khe race. ✅ Unique index ở DB + bắt `UniqueConstraintViolationException` → `DiscardChanges()` → đọc lại bản thắng (xem patterns.md "Find-or-create").

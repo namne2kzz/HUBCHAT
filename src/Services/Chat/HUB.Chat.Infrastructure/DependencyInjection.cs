@@ -1,4 +1,5 @@
 using HUB.Chat.Application.Common.Interfaces;
+using HUB.Chat.Infrastructure.Directory;
 using HUB.Chat.Infrastructure.Messaging;
 using HUB.Chat.Infrastructure.Persistence;
 using HUB.Shared.Messaging;
@@ -24,6 +25,16 @@ public static class DependencyInjection
         services.AddDbContext<ChatDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IChatDbContext>(sp => sp.GetRequiredService<ChatDbContext>());
         services.AddScoped<IIntegrationEventPublisher, IntegrationEventPublisher>();
+
+        // Caller workspace permissions (ManageChannels) from dashboard-gateway, relaying the caller's token.
+        var gatewayUrl = configuration.GetValue<string>("DashboardGateway:BaseUrl");
+        if (string.IsNullOrWhiteSpace(gatewayUrl))
+            throw new InvalidOperationException("Missing 'DashboardGateway:BaseUrl'.");
+        services.AddHttpContextAccessor();
+        services
+            .AddHttpClient<IWorkspacePermissions, DashboardGatewayWorkspacePermissions>(c =>
+                DashboardGatewayWorkspacePermissions.Configure(c, gatewayUrl))
+            .AddStandardResilienceHandler(DashboardGatewayWorkspacePermissions.ConfigureResilience);
 
         services.AddHubMessaging(configuration, bus =>
             // Transactional outbox stored in ChatDbContext; delivered to RabbitMQ after commit.
