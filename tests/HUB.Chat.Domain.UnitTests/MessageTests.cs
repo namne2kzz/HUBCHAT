@@ -18,6 +18,23 @@ public sealed class MessageTests
     }
 
     [Fact]
+    public void Post_EmptyClientMessageId_Throws()
+    {
+        // Guid.Empty is what a client gets from a broken UUID generator; accepting it would make every such
+        // send collide on one key and silently return the author's first message forever.
+        Should.Throw<DomainException>(() =>
+            Message.Post(Guid.NewGuid(), Guid.NewGuid(), "hi", clientMessageId: Guid.Empty));
+    }
+
+    [Fact]
+    public void Post_KeepsTheClientMessageId()
+    {
+        var key = Guid.NewGuid();
+        Message.Post(Guid.NewGuid(), Guid.NewGuid(), "hi", clientMessageId: key).ClientMessageId.ShouldBe(key);
+        Message.Post(Guid.NewGuid(), Guid.NewGuid(), "hi").ClientMessageId.ShouldBeNull();
+    }
+
+    [Fact]
     public void Post_KeepsDistinctMentions()
     {
         var u = Guid.NewGuid();

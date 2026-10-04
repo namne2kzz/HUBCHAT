@@ -66,9 +66,29 @@ public sealed class FileObject : Entity
         return new FileObject(workspaceId, channelId, fileName.Trim(), contentType.Trim(), sizeBytes, key, uploadedBy) { Id = id };
     }
 
-    /// <summary>Marks the object scanned with the given result.</summary>
+    /// <summary>Records a scan result. Verdicts only ever tighten: Pending → Clean/Infected, Clean → Infected.</summary>
     /// <param name="clean">True if clean; false if infected.</param>
-    public void MarkScanned(bool clean) => ScanStatus = clean ? ScanStatus.Clean : ScanStatus.Infected;
+    /// <returns>
+    /// True only when this call gave the file its first verdict (it was Pending). Callers use it to publish
+    /// "uploaded" exactly once — a repeated complete-upload (client retry, double click) returns false and
+    /// must not announce the file again.
+    /// </returns>
+    /// <remarks>
+    /// A later infected verdict still closes an already-clean file (e.g. after a signature update). The
+    /// reverse is refused: an Infected file never becomes Clean through this method, so a replayed
+    /// "complete, assume clean" cannot reopen a file a scan has blocked.
+    /// </remarks>
+    public bool MarkScanned(bool clean)
+    {
+        if (ScanStatus == ScanStatus.Pending)
+        {
+            ScanStatus = clean ? ScanStatus.Clean : ScanStatus.Infected;
+            return true;
+        }
+
+        if (!clean) ScanStatus = ScanStatus.Infected;
+        return false;
+    }
 
     /// <summary>True when the object may be downloaded.</summary>
     public bool IsDownloadable => ScanStatus == ScanStatus.Clean;

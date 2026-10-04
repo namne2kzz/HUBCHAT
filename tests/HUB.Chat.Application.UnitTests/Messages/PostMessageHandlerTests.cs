@@ -289,4 +289,97 @@ public sealed class PostMessageHandlerTests
         var stored = await verify.Messages.AsNoTracking().SingleAsync(m => m.Id == reply.Id);
         stored.ParentId.ShouldBe(parent.Id);
     }
+
+    // ── Idempotent send (ClientMessageId) ───────────────────────────────────
+
+    [Fact]
+    public async Task ARetryWithTheSameClientKeyReturnsTheOriginalAndPublishesNothing()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author  = Guid.NewGuid();
+        var channel = ChannelWith(author);
+        lease.Context.Channels.Add(channel);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var events = new RecordingEventPublisher();
+        var key    = Guid.NewGuid();
+        var send   = new PostMessageCommand(channel.Id, "hello", MessageFormat.Plain, null, [Guid.NewGuid()], author, key);
+
+        var first  = await new PostMessageHandler(lease.Context, events).Handle(send, CancellationToken.None);
+        var publishedAfterFirst = events.Published.Count;
+
+        // A fresh context = a fresh request, as a real retry would be.
+        await using var retryContext = lease.NewContext();
+        var second = await new PostMessageHandler(retryContext, events).Handle(send, CancellationToken.None);
+
+        second.Id.ShouldBe(first.Id);
+        // The point of the key: the first send already fanned out and notified. A retry that published
+        // again would push a duplicate to every client and mention-notify twice.
+        events.Published.Count.ShouldBe(publishedAfterFirst);
+
+        await using var verify = lease.NewContext();
+        (await verify.Messages.CountAsync(m => m.ChannelId == channel.Id)).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task SendsWithoutAClientKeyAreNeverDeduplicated()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author  = Guid.NewGuid();
+        var channel = ChannelWith(author);
+        lease.Context.Channels.Add(channel);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var handler = new PostMessageHandler(lease.Context, new RecordingEventPublisher());
+        var send    = new PostMessageCommand(channel.Id, "same text", MessageFormat.Plain, null, [], author);
+
+        await handler.Handle(send, CancellationToken.None);
+        await handler.Handle(send, CancellationToken.None);
+
+        // Older clients send no key; identical text twice is two deliberate messages, not a retry.
+        await using var verify = lease.NewContext();
+        (await verify.Messages.CountAsync(m => m.ChannelId == channel.Id)).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task TheSameClientKeyFromAnotherAuthorIsADifferentMessage()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var alice   = Guid.NewGuid();
+        var bob     = Guid.NewGuid();
+        var channel = ChannelWith(alice);
+        channel.AddMember(bob);
+        lease.Context.Channels.Add(channel);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var handler = new PostMessageHandler(lease.Context, new RecordingEventPublisher());
+        var key     = Guid.NewGuid();
+
+        var fromAlice = await handler.Handle(new PostMessageCommand(channel.Id, "a", MessageFormat.Plain, null, [], alice, key), CancellationToken.None);
+        var fromBob   = await handler.Handle(new PostMessageCommand(channel.Id, "b", MessageFormat.Plain, null, [], bob, key), CancellationToken.None);
+
+        // Keys are scoped per author — otherwise one user could guess/replay another's key and be handed
+        // their message back.
+        fromBob.Id.ShouldNotBe(fromAlice.Id);
+    }
+
+    [Fact]
+    public async Task ReusingAClientKeyInAnotherChannelIsRefused()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author = Guid.NewGuid();
+        var first  = ChannelWith(author);
+        var other  = ChannelWith(author);
+        lease.Context.Channels.AddRange(first, other);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var handler = new PostMessageHandler(lease.Context, new RecordingEventPublisher());
+        var key     = Guid.NewGuid();
+        await handler.Handle(new PostMessageCommand(first.Id, "hi", MessageFormat.Plain, null, [], author, key), CancellationToken.None);
+
+        // Same key, different target is a client bug, not a retry — answering with the first channel's
+        // message would report a send that never happened.
+        await Should.ThrowAsync<DomainException>(() => handler.Handle(
+            new PostMessageCommand(other.Id, "hi", MessageFormat.Plain, null, [], author, key), CancellationToken.None));
+    }
 }

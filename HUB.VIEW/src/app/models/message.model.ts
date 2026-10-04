@@ -53,6 +53,8 @@ export interface PostMessageRequest {
   format: MessageFormat;
   parentId?: string;
   mentionedUserIds?: string[];
+  /** Idempotency key (UUID) for this send; the same key on a retry returns the original message. */
+  clientMessageId?: string;
 }
 
 /** Backend keyset page: HUB.Chat.Application.Common.Models.CursorPage<T> — items + nextCursor only. */

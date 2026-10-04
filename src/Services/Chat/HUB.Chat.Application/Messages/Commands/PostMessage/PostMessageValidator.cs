@@ -11,5 +11,6 @@ public sealed class PostMessageValidator : AbstractValidator<PostMessageCommand>
         RuleFor(x => x.ChannelId).NotEmpty();
         RuleFor(x => x.ActingUserId).NotEmpty();
         RuleFor(x => x.Body).NotEmpty().MaximumLength(8000);
+        RuleFor(x => x.ClientMessageId).NotEqual(Guid.Empty).When(x => x.ClientMessageId is not null);
     }
 }

@@ -7,11 +7,13 @@ namespace HUB.Chat.WebApi.Controllers.Messages.Requests;
 /// <param name="Format">Body format (defaults to Markdown).</param>
 /// <param name="ParentId">Parent message id for a thread reply; null for top-level.</param>
 /// <param name="MentionedUserIds">User ids @mentioned.</param>
+/// <param name="ClientMessageId">Optional idempotency key (UUID) generated per send; reuse it when retrying the same send.</param>
 public sealed record PostMessageRequest(
     string Body,
     MessageFormat Format,
     Guid? ParentId,
-    IReadOnlyList<Guid>? MentionedUserIds);
+    IReadOnlyList<Guid>? MentionedUserIds,
+    Guid? ClientMessageId = null);
 
 /// <summary>Body for reacting to a message.</summary>
 /// <param name="Emoji">Emoji shortcode.</param>

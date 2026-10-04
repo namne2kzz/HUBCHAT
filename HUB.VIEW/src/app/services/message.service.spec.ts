@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MessageService } from './message.service';
@@ -97,9 +97,49 @@ describe('MessageService', () => {
 
       const req = http.expectOne(MESSAGES);
       expect(req.request.method).toBe('POST');
-      expect(req.request.body).toEqual(request);
+      expect(req.request.body).toEqual(jasmine.objectContaining(request));
       req.flush({ id: 'm1' });
     });
+
+    it('attaches a fresh client message id to every send', () => {
+      service.send('c1', { body: 'a', format: 1 } as never).subscribe();
+      service.send('c1', { body: 'a', format: 1 } as never).subscribe();
+
+      // Two deliberate sends of the same text are two messages — they must not share a key.
+      const [first, second] = http.match(MESSAGES);
+      expect(first.request.body.clientMessageId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(second.request.body.clientMessageId).not.toBe(first.request.body.clientMessageId);
+      first.flush({ id: 'm1' });
+      second.flush({ id: 'm2' });
+    });
+
+    it('retries a lost response with the same key, so the server can return the original', fakeAsync(() => {
+      let received: unknown;
+      service.send('c1', { body: 'hi', format: 1 } as never).subscribe(m => (received = m));
+
+      const attempt1 = http.expectOne(MESSAGES);
+      const key = attempt1.request.body.clientMessageId;
+      attempt1.error(new ProgressEvent('error'), { status: 0 }); // connection dropped — maybe committed
+
+      tick(MessageService.retryBaseMs);
+      const attempt2 = http.expectOne(MESSAGES);
+      expect(attempt2.request.body.clientMessageId).toBe(key);
+      attempt2.flush({ id: 'm1' });
+
+      expect(received).toEqual({ id: 'm1' });
+    }));
+
+    it('does not retry a client error', fakeAsync(() => {
+      let failed = false;
+      service.send('c1', { body: 'hi', format: 1 } as never).subscribe({ error: () => (failed = true) });
+
+      http.expectOne(MESSAGES).flush({ title: 'bad' }, { status: 400, statusText: 'Bad Request' });
+      tick(10_000);
+
+      // A 400 will fail identically every time; retrying only delays the error the user needs to see.
+      http.expectNone(MESSAGES);
+      expect(failed).toBeTrue();
+    }));
 
     it('sends the format as a number', () => {
       // The API registers no JsonStringEnumConverter, so an enum name would be rejected at model

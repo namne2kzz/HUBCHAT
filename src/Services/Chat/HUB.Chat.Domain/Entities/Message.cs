@@ -47,6 +47,12 @@ public sealed class Message : AggregateRoot
     /// <summary>User ids explicitly @mentioned in the body.</summary>
     public IReadOnlyList<Guid> Mentions => _mentions.AsReadOnly();
 
+    /// <summary>
+    /// Client-generated idempotency key for the send that created this message; null for clients that do
+    /// not send one. Unique per author, so a retried send resolves to this message instead of a duplicate.
+    /// </summary>
+    public Guid? ClientMessageId { get; private set; }
+
     /// <summary>UTC time the message was last edited; null if never edited.</summary>
     public DateTime? EditedAt { get; private set; }
 
@@ -70,15 +76,22 @@ public sealed class Message : AggregateRoot
     /// <param name="parentId">Parent message id for a thread reply; null otherwise.</param>
     /// <param name="replyToId">Message id this quote-replies to; null otherwise.</param>
     /// <param name="mentions">User ids mentioned in the body.</param>
+    /// <param name="clientMessageId">Client idempotency key for this send; null when the client sends none.</param>
     /// <returns>The new message.</returns>
     public static Message Post(
         Guid channelId, Guid authorId, string body, MessageFormat format = MessageFormat.Markdown,
-        Guid? parentId = null, Guid? replyToId = null, IEnumerable<Guid>? mentions = null)
+        Guid? parentId = null, Guid? replyToId = null, IEnumerable<Guid>? mentions = null,
+        Guid? clientMessageId = null)
     {
         if (string.IsNullOrWhiteSpace(body))
             throw new DomainException("Message body cannot be empty.");
+        if (clientMessageId == Guid.Empty)
+            throw new DomainException("Client message id cannot be empty.");
 
-        return new Message(channelId, authorId, body.Trim(), format, parentId, replyToId, mentions ?? []);
+        return new Message(channelId, authorId, body.Trim(), format, parentId, replyToId, mentions ?? [])
+        {
+            ClientMessageId = clientMessageId,
+        };
     }
 
     /// <summary>Attaches a stored file/image/video to this message.</summary>

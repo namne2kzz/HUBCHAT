@@ -41,5 +41,11 @@ public sealed class MessageConfiguration : IEntityTypeConfiguration<Message>
         // Hot path: newest messages per channel (keyset pagination).
         builder.HasIndex(m => new { m.ChannelId, m.CreatedAt });
         builder.HasIndex(m => m.ParentId);
+
+        // Idempotent send: one message per (author, client key). Filtered so legacy rows / clients that
+        // send no key (NULL) never collide. Concurrent retries race on this index, not on a read.
+        builder.HasIndex(m => new { m.AuthorId, m.ClientMessageId })
+            .IsUnique()
+            .HasFilter("\"ClientMessageId\" IS NOT NULL");
     }
 }

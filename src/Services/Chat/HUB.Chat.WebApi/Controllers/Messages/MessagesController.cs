@@ -23,14 +23,17 @@ public sealed class MessagesController(ISender mediator, ICurrentUser currentUse
     /// <param name="channelId">Target channel.</param>
     /// <param name="request">Message content.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>201 with the created message.</returns>
+    /// <returns>
+    /// 201 with the created message. A retry carrying the same <c>ClientMessageId</c> gets the same 201 and
+    /// the original message — the response a lost first reply would have carried.
+    /// </returns>
     [HttpPost("channels/{channelId:guid}/messages")]
     [ProducesResponseType<MessageDto>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Post(Guid channelId, [FromBody] PostMessageRequest request, CancellationToken ct)
     {
         var dto = await mediator.Send(new PostMessageCommand(
             channelId, request.Body, request.Format, request.ParentId,
-            request.MentionedUserIds ?? [], currentUser.Id), ct);
+            request.MentionedUserIds ?? [], currentUser.Id, request.ClientMessageId), ct);
         return StatusCode(StatusCodes.Status201Created, dto);
     }
 

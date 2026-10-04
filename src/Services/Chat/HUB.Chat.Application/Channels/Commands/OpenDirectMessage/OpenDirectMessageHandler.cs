@@ -1,4 +1,5 @@
 using HUB.Chat.Application.Channels.DTOs;
+using HUB.Chat.Application.Common.Exceptions;
 using HUB.Chat.Application.Common.Interfaces;
 using HUB.Chat.Domain.Common;
 using HUB.Chat.Domain.Entities;
@@ -21,12 +22,7 @@ public sealed class OpenDirectMessageHandler(IChatDbContext db) : IRequestHandle
         if (request.TargetUserId == request.ActingUserId)
             throw new DomainException("You cannot start a direct message with yourself.");
 
-        // Canonical DM: any DM channel that has BOTH users as members (workspace-independent).
-        var existing = await db.Channels
-            .Include(c => c.Members)
-            .FirstOrDefaultAsync(c => c.Type == ChannelType.Dm
-                && c.Members.Any(m => m.UserId == request.ActingUserId)
-                && c.Members.Any(m => m.UserId == request.TargetUserId), ct);
+        var existing = await FindAsync(request, ct);
 
         if (existing is not null)
             return existing.ToDto(request.ActingUserId, otherUserId: request.TargetUserId);
@@ -40,8 +36,28 @@ public sealed class OpenDirectMessageHandler(IChatDbContext db) : IRequestHandle
         var channel = Channel.Create(request.WorkspaceId, name, ChannelType.Dm, request.ActingUserId, string.Empty);
         channel.AddMember(request.TargetUserId, ChannelMemberRole.Member);
         db.Channels.Add(channel);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (UniqueConstraintViolationException)
+        {
+            // Both users opened the DM at once: the per-pair name makes the slug collide (unique per
+            // workspace), so the slower insert lands here — return the DM the other request created.
+            db.DiscardChanges();
+            var winner = await FindAsync(request, ct);
+            if (winner is null) throw;
+            return winner.ToDto(request.ActingUserId, otherUserId: request.TargetUserId);
+        }
 
         return channel.ToDto(request.ActingUserId, otherUserId: request.TargetUserId);
     }
+
+    // Canonical DM: any DM channel that has BOTH users as members (workspace-independent).
+    private Task<Channel?> FindAsync(OpenDirectMessageCommand request, CancellationToken ct) =>
+        db.Channels
+            .Include(c => c.Members)
+            .FirstOrDefaultAsync(c => c.Type == ChannelType.Dm
+                && c.Members.Any(m => m.UserId == request.ActingUserId)
+                && c.Members.Any(m => m.UserId == request.TargetUserId), ct);
 }

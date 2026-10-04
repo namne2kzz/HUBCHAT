@@ -30,8 +30,12 @@ public sealed class ChannelConfiguration : IEntityTypeConfiguration<Channel>
         builder.Property(c => c.LinkExternalKey).HasMaxLength(64);
         builder.Property(c => c.LinkUrl).HasMaxLength(500);
 
-        // Find-or-create linked discussion threads by (workspace, external resource).
-        builder.HasIndex(c => new { c.WorkspaceId, c.LinkExternalId });
+        // Find-or-create linked discussion threads by (workspace, resource type, external resource).
+        // Unique so two users opening the same work item / sprint at once get one thread, not two: the
+        // slower insert fails here and its handler re-reads the winner. Filtered — unlinked channels are NULL.
+        builder.HasIndex(c => new { c.WorkspaceId, c.LinkType, c.LinkExternalId })
+            .IsUnique()
+            .HasFilter("\"LinkExternalId\" IS NOT NULL");
         builder.HasIndex(c => c.WorkspaceId);
         builder.HasIndex(c => new { c.WorkspaceId, c.Slug }).IsUnique();
     }

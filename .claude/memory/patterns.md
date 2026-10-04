@@ -304,6 +304,25 @@ MassTransit EF outbox (`AddEntityFrameworkOutbox<TDbContext>` + `UseBusOutbox`) 
 ### Idempotent consumer
 Dedupe theo `IntegrationEvent.EventId` (Inbox của MassTransit). Consume phải chịu được double-delivery (at-least-once).
 
+### Find-or-create / idempotent command (chống race)
+Check-then-insert **không đủ** (khe race giữa 2 lệnh). Unique index ở DB là đảm bảo; check trước chỉ là đường nhanh.
+```csharp
+if (await FindAsync(request, ct) is { } existing) return existing.ToDto();
+db.Channels.Add(channel);
+try { await db.SaveChangesAsync(ct); }
+catch (UniqueConstraintViolationException)          // ChatDbContext dịch Postgres 23505 → exception Application
+{
+    db.DiscardChanges();                             // bỏ insert thua (+ child + outbox rows) khỏi tracker
+    var winner = await FindAsync(request, ct);
+    if (winner is null) throw;                       // clash khác (vd slug) — không phải của mình
+    return winner.ToDto();
+}
+```
+- Index unique **filtered** (`HasFilter("\"Col\" IS NOT NULL")`) khi cột nullable / key tuỳ chọn.
+- Idempotency key client (vd `ClientMessageId`) scope **theo user**, replay **không publish event lần 2**.
+- Test race ở **IntegrationTests (Postgres thật)**, bắn N request song song; SQLite unit test không có 23505.
+- Ví dụ: `PostMessageHandler`, `OpenLinkedThreadHandler`, `FindOrCreateSprintChannelHandler`, `OpenDirectMessageHandler`.
+
 ### Keyset (seek) pagination
 ```csharp
 if (MessageCursor.TryDecode(cursor) is { } c) query = query.Where(m => m.CreatedAt < c.CreatedAt);

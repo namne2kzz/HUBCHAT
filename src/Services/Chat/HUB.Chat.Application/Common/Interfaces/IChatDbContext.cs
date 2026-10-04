@@ -16,4 +16,10 @@ public interface IChatDbContext
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Number of state entries written.</returns>
     Task<int> SaveChangesAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Stops tracking every pending change (including outbox rows) so a later save does not retry them.
+    /// Use after a failed save — e.g. a lost find-or-create race — before re-reading and saving again.
+    /// </summary>
+    void DiscardChanges();
 }

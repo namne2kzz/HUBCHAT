@@ -191,9 +191,34 @@ public sealed class FileObjectTests
         file.MarkScanned(clean: true);
         file.MarkScanned(clean: false);
 
-        // MarkScanned is a plain setter with no terminal state, so a later scan overrides an earlier one.
-        // Recorded because it means a file already ruled clean can be closed off again — useful for an
-        // updated signature database, and worth knowing rather than discovering.
+        // Verdicts may tighten: a file already ruled clean can be closed off again — useful for an updated
+        // signature database.
+        file.ScanStatus.ShouldBe(ScanStatus.Infected);
+        file.IsDownloadable.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void OnlyTheFirstVerdictReportsATransition()
+    {
+        var file = NewFile();
+
+        // CompleteUpload publishes FileUploaded only on true — a retried complete must get false.
+        file.MarkScanned(clean: true).ShouldBeTrue();
+        file.MarkScanned(clean: true).ShouldBeFalse();
+        file.MarkScanned(clean: false).ShouldBeFalse(); // tightening still applies, but is not a "first" verdict
+        file.ScanStatus.ShouldBe(ScanStatus.Infected);
+    }
+
+    [Fact]
+    public void AnInfectedFileCannotBeReopenedByALaterCleanVerdict()
+    {
+        var file = NewFile();
+        file.MarkScanned(clean: false);
+
+        // CompleteUpload always passes clean: true (no real scanner yet). Before this guard, replaying it
+        // flipped an Infected file back to Clean and made it downloadable.
+        file.MarkScanned(clean: true).ShouldBeFalse();
+
         file.ScanStatus.ShouldBe(ScanStatus.Infected);
         file.IsDownloadable.ShouldBeFalse();
     }

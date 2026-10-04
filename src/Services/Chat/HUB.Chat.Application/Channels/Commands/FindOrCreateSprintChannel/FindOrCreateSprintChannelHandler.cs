@@ -1,4 +1,5 @@
 using HUB.Chat.Application.Channels.DTOs;
+using HUB.Chat.Application.Common.Exceptions;
 using HUB.Chat.Application.Common.Interfaces;
 using HUB.Chat.Domain.Entities;
 using HUB.Chat.Domain.Enums;
@@ -22,12 +23,7 @@ public sealed class FindOrCreateSprintChannelHandler(IChatDbContext db)
     public async Task<ChannelDto> Handle(FindOrCreateSprintChannelCommand request, CancellationToken ct)
     {
         // ── Look up existing sprint-linked channel ────────────────────────────
-        var existing = await db.Channels
-            .Include(c => c.Members)
-            .FirstOrDefaultAsync(c =>
-                c.WorkspaceId    == request.WorkspaceId  &&
-                c.LinkType       == LinkedResourceType.Sprint &&
-                c.LinkExternalId == request.SprintId, ct);
+        var existing = await FindAsync(request, ct);
 
         if (existing is not null)
             return ToDto(existing);
@@ -48,10 +44,30 @@ public sealed class FindOrCreateSprintChannelHandler(IChatDbContext db)
             url: string.Empty); // DASHBOARD will store the URL; HUB doesn't know the frontend URL
 
         db.Channels.Add(channel);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (UniqueConstraintViolationException)
+        {
+            // A concurrent call created this sprint's channel first (unique link index) — return that one.
+            // Null means the clash was something else (e.g. slug) — not ours to resolve.
+            db.DiscardChanges();
+            var winner = await FindAsync(request, ct);
+            if (winner is null) throw;
+            return ToDto(winner);
+        }
 
         return ToDto(channel);
     }
+
+    private Task<Channel?> FindAsync(FindOrCreateSprintChannelCommand request, CancellationToken ct) =>
+        db.Channels
+            .Include(c => c.Members)
+            .FirstOrDefaultAsync(c =>
+                c.WorkspaceId    == request.WorkspaceId  &&
+                c.LinkType       == LinkedResourceType.Sprint &&
+                c.LinkExternalId == request.SprintId, ct);
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

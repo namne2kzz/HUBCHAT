@@ -34,6 +34,12 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
         {
             await WriteAsync(context, StatusCodes.Status409Conflict, "domain_error", ex.Message);
         }
+        catch (UniqueConstraintViolationException ex)
+        {
+            // A duplicate the handler did not resolve (e.g. a slug clash) — a conflict, not a server fault.
+            logger.LogWarning(ex, "Unique constraint {Constraint} violated", ex.ConstraintName);
+            await WriteAsync(context, StatusCodes.Status409Conflict, "conflict", "A resource with the same identity already exists.");
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Unhandled exception");
