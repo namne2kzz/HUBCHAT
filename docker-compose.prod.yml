@@ -132,6 +132,7 @@ services:
       Jwt__Issuer:   ${JWT_ISSUER:-dashboard-api}
       Jwt__Audience: ${JWT_AUDIENCE:-dashboard-spa}
       Redis__Connection:  ${REDIS_CONNECTION:-redis:6379}
+      Redis__BackplanePrefix: ${REDIS_BACKPLANE_PREFIX:-hub-rt:prod}
       RabbitMq__Host:     ${RABBITMQ_HOST:-rabbitmq}
       RabbitMq__User:     ${RABBITMQ_USER}
       RabbitMq__Password: ${RABBITMQ_PASSWORD}
