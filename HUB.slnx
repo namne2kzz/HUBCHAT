@@ -47,6 +47,7 @@
     <Project Path="tests/HUB.Notification.Domain.UnitTests/HUB.Notification.Domain.UnitTests.csproj" />
     <Project Path="tests/HUB.Notification.UnitTests/HUB.Notification.UnitTests.csproj" />
     <Project Path="tests/HUB.Realtime.UnitTests/HUB.Realtime.UnitTests.csproj" />
+    <Project Path="tests/HUB.Shared.Messaging.UnitTests/HUB.Shared.Messaging.UnitTests.csproj" />
     <Project Path="tests/HUB.Media.Domain.UnitTests/HUB.Media.Domain.UnitTests.csproj" />
     <Project Path="tests/HUB.DashboardGateway.UnitTests/HUB.DashboardGateway.UnitTests.csproj" />
   </Folder>

@@ -9,11 +9,9 @@ description: Use when a command must persist state AND publish integration event
 
 ## Wiring (Infrastructure DI)
 ```csharp
-services.AddMassTransit(bus =>
-{
-    bus.AddEntityFrameworkOutbox<ChatDbContext>(o => { o.UsePostgres(); o.UseBusOutbox(); });
-    bus.UsingRabbitMq((ctx, cfg) => { cfg.Host(...); cfg.ConfigureEndpoints(ctx); });
-});
+// Luôn qua AddHubMessaging — KHÔNG tự gọi AddMassTransit (lệch retry/endpoint naming giữa service).
+services.AddHubMessaging(configuration, bus =>
+    bus.AddEntityFrameworkOutbox<ChatDbContext>(o => { o.UsePostgres(); o.UseBusOutbox(); }));
 ```
 
 ## DbContext

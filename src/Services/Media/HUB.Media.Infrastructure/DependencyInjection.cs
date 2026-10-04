@@ -34,20 +34,9 @@ public static class DependencyInjection
             .Build());
         services.AddScoped<IObjectStorage, MinioObjectStorage>();
 
-        var rabbit = configuration.GetSection(RabbitMqOptions.SectionName).Get<RabbitMqOptions>()
-                     ?? throw new InvalidOperationException("Missing 'RabbitMq' configuration section.");
-
-        services.AddMassTransit(bus =>
-        {
-            bus.SetKebabCaseEndpointNameFormatter();
-            bus.AddEntityFrameworkOutbox<MediaDbContext>(o => { o.UsePostgres(); o.UseBusOutbox(); });
-            bus.UsingRabbitMq((context, cfg) =>
-            {
-                cfg.Host(rabbit.Host, rabbit.VirtualHost, h => { h.Username(rabbit.User); h.Password(rabbit.Password); });
-                cfg.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(5)));
-                cfg.ConfigureEndpoints(context);
-            });
-        });
+        services.AddHubMessaging(configuration, bus =>
+            // Transactional outbox stored in MediaDbContext; delivered to RabbitMQ after commit.
+            bus.AddEntityFrameworkOutbox<MediaDbContext>(o => { o.UsePostgres(); o.UseBusOutbox(); }));
 
         return services;
     }

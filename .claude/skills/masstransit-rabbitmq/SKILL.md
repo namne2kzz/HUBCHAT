@@ -36,12 +36,16 @@ public sealed class MessageSentConsumer(IHubContext<ChatHub> hub) : IConsumer<Me
 }
 ```
 
-## Retry / DLQ (đã cấu hình trong HUB.Shared.Messaging)
+## Retry / DLQ (đã cấu hình trong HUB.Shared.Messaging — `AddHubRetryPolicy`)
+- Per-endpoint (qua `AddConfigureEndpointsCallback`), **exponential in-memory** 5 lần (~0.2s → 7.7s), rồi fault → `_error`. Inspect qua RabbitMQ UI :15672.
+- **Không dùng `UseDelayedRedelivery`**: broker dùng chung với DASHBOARD (`rabbitmq:3-management`) không có plugin `rabbitmq_delayed_message_exchange`.
+- Exception nghiệp vụ (không transient) → ignore để fault ngay, không retry vô ích:
 ```csharp
-cfg.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(5)));
-cfg.UseDelayedRedelivery(r => r.Intervals(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5)));
-// message lỗi vượt retry → dead-letter queue (_error). Inspect qua RabbitMQ UI :15672.
+services.AddHubMessaging(configuration,
+    bus => bus.AddConsumer<FileUploadedConsumer>(),
+    configureRetry: r => r.Ignore<DomainException>());
 ```
+- Test consumer với đúng policy production: `AddMassTransitTestHarness(bus => { bus.AddHubRetryPolicy(); bus.AddConsumer<...>(); })`.
 
 ## Đừng
 - ❌ Publish base `IntegrationEvent` (mất concrete type). ❌ Gọi broker của DASHBOARD.
