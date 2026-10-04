@@ -1,7 +1,11 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using HUB.Realtime.WebApi.Channels;
 using HUB.TestKit.Fakes;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 using Xunit;
@@ -153,5 +157,46 @@ public sealed class ChannelAccessServiceTests
         await service.CanJoinAsync(ChannelId, UserId, Ct);
 
         path.ShouldBe($"/internal/channels/{ChannelId}/can-join/{UserId}");
+    }
+
+    /// <summary>Upstream that never answers until the request is cancelled.</summary>
+    private sealed class HangingHandler : HttpMessageHandler
+    {
+        public int Calls;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Interlocked.Increment(ref Calls);
+            await Task.Delay(Timeout.Infinite, ct);
+            throw new UnreachableException();
+        }
+    }
+
+    [Fact]
+    public async Task CanJoin_DeniesWithinTheTimeoutBudget_WhenChatServiceHangs()
+    {
+        // Goes through the production resilience pipeline (ConfigureResilience), not a bare HttpClient: the
+        // timeout is Polly's now, and it surfaces as TimeoutRejectedException rather than
+        // TaskCanceledException — which the old catch did not cover, so a hang threw out of the hub method.
+        var hanging = new HangingHandler();
+        var services = new ServiceCollection()
+            .AddLogging()
+            .AddSingleton<IDistributedCache, FakeDistributedCache>();
+        services
+            .AddHttpClient<IChannelAccessService, ChannelAccessService>(c => ChannelAccessService.Configure(c, "http://chat/", "token"))
+            .ConfigurePrimaryHttpMessageHandler(() => hanging)
+            .AddStandardResilienceHandler(ChannelAccessService.ConfigureResilience);
+
+        // Resolving also runs the resilience options validation — a mis-tuned ConfigureResilience fails here.
+        await using var provider = services.BuildServiceProvider();
+        var service = provider.GetRequiredService<IChannelAccessService>();
+
+        var clock   = Stopwatch.StartNew();
+        var allowed = await service.CanJoinAsync(ChannelId, UserId, Ct);
+        clock.Stop();
+
+        allowed.ShouldBeFalse();
+        hanging.Calls.ShouldBe(2); // first attempt timed out, one retry
+        clock.Elapsed.ShouldBeLessThan(ChannelAccessService.TotalTimeout + TimeSpan.FromSeconds(1));
     }
 }

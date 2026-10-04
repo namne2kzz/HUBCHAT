@@ -29,7 +29,8 @@ Retry, circuit breaker, hedging, timeout cho HttpClient và EF Core.
 builder.Services.AddHttpClient<IPaymentClient, PaymentClient>(client =>
     {
         client.BaseAddress = new Uri(builder.Configuration["PaymentApi:BaseUrl"]!);
-        client.Timeout = TimeSpan.FromSeconds(30);
+        // ❌ KHÔNG set client.Timeout khi có resilience handler: nó là timer ngoài cùng, cắt ngang retry.
+        // Timeout cấu hình qua opt.AttemptTimeout / opt.TotalRequestTimeout.
     })
     .AddStandardResilienceHandler(opt =>
     {
@@ -169,6 +170,13 @@ builder.AddTimeout(new TimeoutStrategyOptions
 - Circuit breaker mở: log `LogWarning`, không `LogError` — đây là behavior có chủ đích
 - Không retry với `POST` mà không có idempotency key — risk tạo duplicate
 - `CancellationToken` phải pass qua tất cả pipeline steps
+
+## Bắt lỗi ở caller
+Khi đi qua resilience handler, timeout/circuit-open ném **`Polly.ExecutionRejectedException`** (`TimeoutRejectedException`, `BrokenCircuitException`), không phải `TaskCanceledException`. Catch "upstream down" phải gồm cả nó:
+```csharp
+catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or ExecutionRejectedException)
+```
+Ví dụ thật: `HUB.Realtime.WebApi/Channels/ChannelAccessService.cs` (`ConfigureResilience` + test `CanJoin_DeniesWithinTheTimeoutBudget_WhenChatServiceHangs`).
 
 ## Prompt Template
 ```

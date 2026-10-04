@@ -2,6 +2,8 @@ using System.Net;
 using System.Text.Json;
 using HUB.Shared.Auth;
 using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Http.Resilience;
+using Polly;
 
 namespace HUB.Realtime.WebApi.Channels;
 
@@ -70,7 +72,9 @@ public sealed class ChannelAccessService(
                 allowed = body?.Allowed ?? false;
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        // ExecutionRejectedException covers Polly's TimeoutRejectedException (attempt/total timeout hit) and
+        // BrokenCircuitException (circuit open) — both mean "chat-service unavailable", same as a socket error.
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or ExecutionRejectedException)
         {
             // Not cached: a transient outage must not pin a denial for the whole DenyTtl, and the next
             // attempt should reach chat-service again.
@@ -101,7 +105,27 @@ public sealed class ChannelAccessService(
     {
         client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
         client.DefaultRequestHeaders.Add(ServiceTokenDefaults.Header, internalToken);
-        // A join must not hang on a slow upstream — the hub method is awaited by the client.
-        client.Timeout = TimeSpan.FromSeconds(5);
+        // No client.Timeout here: it is the outermost timer and would cut the resilience pipeline short,
+        // so retries never got to run. Timeouts live in ConfigureResilience instead.
+    }
+
+    /// <summary>Total budget for one access check, retries included.</summary>
+    /// <remarks>A join must not hang on a slow upstream — the hub method is awaited by the client.</remarks>
+    public static readonly TimeSpan TotalTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>Tunes the standard resilience handler for a fast, read-only membership lookup.</summary>
+    /// <remarks>
+    /// Two 2s attempts with a short pause fit inside <see cref="TotalTimeout"/>. The defaults (10s per
+    /// attempt, 30s total, 3 retries) suit a background call, not a user waiting on a join.
+    /// </remarks>
+    /// <param name="options">The standard resilience options to adjust.</param>
+    public static void ConfigureResilience(HttpStandardResilienceOptions options)
+    {
+        options.AttemptTimeout.Timeout       = TimeSpan.FromSeconds(2);
+        options.TotalRequestTimeout.Timeout  = TotalTimeout;
+        options.Retry.MaxRetryAttempts       = 1;
+        options.Retry.Delay                  = TimeSpan.FromMilliseconds(200);
+        // Must stay >= 2x AttemptTimeout or options validation fails at startup.
+        options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
     }
 }

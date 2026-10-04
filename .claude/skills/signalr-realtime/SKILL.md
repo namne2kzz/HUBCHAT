@@ -9,9 +9,19 @@ realtime-service là **edge** đẩy message/typing/presence tới client. Busin
 
 ## Backplane (scale nhiều instance)
 ```csharp
-builder.Services.AddSignalR().AddStackExchangeRedis(redisConnection);
+var redisOptions = ConfigurationOptions.Parse(redisConnection);
+redisOptions.AbortOnConnectFail = false; // Redis chưa lên lúc boot → không crash, tự reconnect
+
+builder.Services.AddSignalR().AddStackExchangeRedis(o =>
+{
+    o.Configuration = redisOptions.Clone();
+    // Pub/sub Redis là toàn server (SELECT db KHÔNG tách) → nhiều môi trường chung 1 Redis sẽ nhận push của nhau.
+    // Prefix lấy từ config `Redis:BackplanePrefix` (env REDIS_BACKPLANE_PREFIX), UNIQUE theo môi trường;
+    // mọi instance cùng môi trường phải chung prefix (đổi = breaking deploy).
+    o.Configuration.ChannelPrefix = RedisChannel.Literal(backplanePrefix + ":");
+});
 ```
-`Clients.Group(...)` sẽ tới client dù đang giữ connection ở pod nào.
+`Clients.Group(...)` sẽ tới client dù đang giữ connection ở pod nào. Health `/health/ready` có check Redis (dùng chung multiplexer presence).
 
 ## JWT qua WebSocket
 Client truyền `?access_token=...`; `HUB.Shared.Auth` đã đọc token cho path `/hubs/*`:
