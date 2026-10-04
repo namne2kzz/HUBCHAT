@@ -37,7 +37,9 @@ User login ở DASHBOARD (JWT HMAC dùng chung)
         → PostMessage → chat-service lưu DB + outbox publish MessageSent/UserMentioned (RabbitMQ)
           → realtime-service consume → fan-out "messageReceived" tới group channel:{id} (SignalR + Redis backplane)
           → (P2) notification-service consume UserMentioned → tạo notification/email
-        → reaction, thread reply, edit, soft-delete, mark-read (unread count)
+        → AddReaction → outbox ReactionAdded → realtime push "reactionAdded" tới group channel:{id}
+        → Remove member / Leave → outbox ChannelMemberRemoved → realtime: xoá cache canjoin, gỡ mọi connection của user khỏi group, gửi "channelAccessRevoked"
+        → thread reply, mark-read (unread count) — edit/soft-delete message: chưa có tính năng
 ```
 
 ## 4. Phân quyền (cross-cutting)

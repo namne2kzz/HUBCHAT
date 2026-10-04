@@ -6,8 +6,3 @@ namespace HUB.Media.Application.Files.DTOs;
 /// <param name="StorageKey">Object key.</param>
 /// <param name="ExpiresInSeconds">TTL of the URL.</param>
 public sealed record UploadTicketDto(Guid FileId, string UploadUrl, string StorageKey, int ExpiresInSeconds);
-
-/// <summary>A presigned download URL.</summary>
-/// <param name="Url">Presigned GET URL.</param>
-/// <param name="ExpiresInSeconds">TTL of the URL.</param>
-public sealed record DownloadUrlDto(string Url, int ExpiresInSeconds);

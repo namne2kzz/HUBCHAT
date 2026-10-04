@@ -127,13 +127,15 @@ public sealed class Message : AggregateRoot
     /// <summary>Adds a reaction if the user has not already reacted with the same emoji.</summary>
     /// <param name="userId">Reacting user.</param>
     /// <param name="emoji">Emoji shortcode.</param>
-    public void AddReaction(Guid userId, string emoji)
+    /// <returns>True when the reaction was added; false when the user already had it (no change).</returns>
+    public bool AddReaction(Guid userId, string emoji)
     {
         if (IsDeleted) throw new DomainException("Cannot react to a deleted message.");
         if (string.IsNullOrWhiteSpace(emoji)) throw new DomainException("Emoji is required.");
-        if (_reactions.Any(r => r.UserId == userId && r.Emoji == emoji)) return;
+        if (_reactions.Any(r => r.UserId == userId && r.Emoji == emoji)) return false;
         _reactions.Add(new Reaction(Id, userId, emoji));
         Touch();
+        return true;
     }
 
     /// <summary>Removes a user's reaction if present.</summary>

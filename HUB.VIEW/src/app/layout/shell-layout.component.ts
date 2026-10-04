@@ -579,6 +579,23 @@ export class ShellLayoutComponent implements OnInit {
     this.realtime.typingStopped$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(e => this.removeTyping(e.channelId, e.userId));
+
+    // Removed from (or left, in another tab) a channel. The server has already pulled this connection out
+    // of the group; leaving locally too is belt-and-braces. A private channel also disappears from the
+    // sidebar — otherwise the join-all effect above would try to re-join it on the next reconnect.
+    this.realtime.channelAccessRevoked$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(e => {
+        void this.realtime.leaveChannel(e.channelId);
+        const ch = this.channels().find(c => c.id === e.channelId);
+        if (!ch?.isPrivate) return; // public channels stay listed (readable without membership)
+        this.channels.update(cs => cs.filter(c => c.id !== e.channelId));
+        this.channelSvc.updateCache(this.channels());
+        this.unreadMap.update(m => {
+          const { [e.channelId]: _, ...rest } = m;
+          return rest;
+        });
+      });
   }
 
   /** Records a user typing in a channel and schedules auto-clear after 6s of silence. */

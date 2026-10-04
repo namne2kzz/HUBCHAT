@@ -1,13 +1,19 @@
 namespace HUB.Realtime.WebApi.Presence;
 
-/// <summary>User presence status. Online/Away/DoNotDisturb are "online" variants; Offline means no live connection.</summary>
-public enum PresenceStatus { Offline = 0, Online = 1, Away = 2, DoNotDisturb = 3 }
-
 /// <summary>Redis-backed presence tracking (connection lifetime + a user-set manual status override).</summary>
 public interface IPresenceStore
 {
     /// <summary>Records a new connection. Returns the effective status to broadcast when the user just came online (first connection); null when already online.</summary>
     Task<PresenceStatus?> AddConnectionAsync(Guid userId, string connectionId, CancellationToken ct);
+
+    /// <summary>
+    /// Returns the user's live connection ids across all realtime instances (may include a connection that
+    /// died without a clean disconnect, until its TTL lapses).
+    /// </summary>
+    /// <param name="userId">The user.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Connection ids; empty when the user is offline.</returns>
+    Task<IReadOnlyList<string>> GetConnectionsAsync(Guid userId, CancellationToken ct);
 
     /// <summary>Removes a connection. Returns true if the user just went offline (last connection dropped).</summary>
     Task<bool> RemoveConnectionAsync(Guid userId, string connectionId, CancellationToken ct);

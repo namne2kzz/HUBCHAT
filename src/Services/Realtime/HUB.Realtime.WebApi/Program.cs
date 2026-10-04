@@ -55,8 +55,14 @@ builder.Services
         ChannelAccessService.Configure(c, chatBaseUrl, internalToken))
     .AddStandardResilienceHandler(ChannelAccessService.ConfigureResilience); // Polly: retry + circuit breaker + timeout
 
-// Consume MessageSent from RabbitMQ and push to SignalR groups.
-builder.Services.AddHubMessaging(builder.Configuration, bus => bus.AddConsumer<MessageSentConsumer>());
+// Consume Chat integration events from RabbitMQ and push them to SignalR groups / connections.
+builder.Services.AddHubMessaging(builder.Configuration, bus =>
+{
+    bus.AddConsumer<MessageSentConsumer>();
+    bus.AddConsumer<ReactionAddedConsumer>();
+    // Revokes a removed member's live subscription (group + join cache) — see the consumer for why.
+    bus.AddConsumer<ChannelMemberRemovedConsumer>();
+});
 
 // Reuses the presence multiplexer: a failing ping means presence and the backplane are both down.
 builder.Services.AddHealthChecks()

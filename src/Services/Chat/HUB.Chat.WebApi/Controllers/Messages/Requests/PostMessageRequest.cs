@@ -14,7 +14,3 @@ public sealed record PostMessageRequest(
     Guid? ParentId,
     IReadOnlyList<Guid>? MentionedUserIds,
     Guid? ClientMessageId = null);
-
-/// <summary>Body for reacting to a message.</summary>
-/// <param name="Emoji">Emoji shortcode.</param>
-public sealed record AddReactionRequest(string Emoji);

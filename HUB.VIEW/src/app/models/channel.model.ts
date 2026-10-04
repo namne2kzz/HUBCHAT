@@ -81,3 +81,11 @@ export interface OpenLinkedThreadRequest {
   title?: string;
   url?: string;
 }
+
+/**
+ * Pushed by realtime-service (ChannelMemberRemovedConsumer) to the removed user's connections: they were
+ * removed from — or left — the channel, and the server has already taken them out of its realtime group.
+ */
+export interface ChannelAccessRevokedEvent {
+  channelId: string;
+}

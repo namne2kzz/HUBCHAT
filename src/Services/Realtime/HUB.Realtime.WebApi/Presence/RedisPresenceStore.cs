@@ -26,6 +26,13 @@ public sealed class RedisPresenceStore(IConnectionMultiplexer redis) : IPresence
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GetConnectionsAsync(Guid userId, CancellationToken ct)
+    {
+        var members = await _db.SetMembersAsync(Conns(userId));
+        return [.. members.Select(m => m.ToString())];
+    }
+
+    /// <inheritdoc />
     public async Task<bool> RemoveConnectionAsync(Guid userId, string connectionId, CancellationToken ct)
     {
         await _db.SetRemoveAsync(Conns(userId), connectionId);

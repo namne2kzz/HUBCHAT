@@ -90,3 +90,11 @@ export interface TypingEvent {
   channelId: string;
   userId: string;
 }
+
+/** Pushed by realtime-service (ReactionAddedConsumer) when someone reacts to a message in an open channel. */
+export interface ReactionAddedEvent {
+  messageId: string;
+  channelId: string;
+  userId: string;
+  emoji: string;
+}

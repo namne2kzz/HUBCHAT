@@ -11,6 +11,7 @@ import { DirectoryService } from '../../services/directory.service';
 import { AuthService } from '../../services/auth.service';
 import { ChannelDto, ChannelType } from '../../models/channel.model';
 import { MessageDto, MessageFormat } from '../../models/message.model';
+import { applyReaction } from '../../utils/reaction.util';
 import { DirectoryUser } from '../../models/directory.model';
 import { MessageListComponent } from '../../components/message-list/message-list.component';
 import { MessageInputComponent, ComposerSubmit } from '../../components/message-input/message-input.component';
@@ -363,6 +364,28 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
       .subscribe(e => {
         if (e.channelId === this.channelId)
           this.messages.update(prev => prev.filter(m => m.id !== e.messageId));
+      });
+
+    this.realtime.reactionAdded$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(e => {
+        if (e.channelId !== this.channelId) return;
+        this.messages.update(prev => prev.map(m => applyReaction(m, e.messageId, e.userId, e.emoji)));
+      });
+
+    this.realtime.channelAccessRevoked$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(e => {
+        if (e.channelId !== this.channelId) return;
+        const ch = this.channel();
+        if (ch && !ch.isPrivate) {
+          // A public channel stays readable to non-members — swap the composer for the join bar.
+          this.channel.update(c => (c ? { ...c, isMember: false, memberCount: Math.max(0, c.memberCount - 1) } : c));
+          return;
+        }
+        // Private: the server already stopped the stream; close the view instead of leaving it silently frozen.
+        this.infoOpen.set(false);
+        this.channelSvc.selectChannel('');
       });
   }
 }

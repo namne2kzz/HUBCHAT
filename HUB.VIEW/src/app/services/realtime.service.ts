@@ -3,7 +3,8 @@ import * as signalR from '@microsoft/signalr';
 import { Subject } from 'rxjs';
 import { ConfigService } from '../core/services/config.service';
 import { AuthService } from './auth.service';
-import { MessageDeletedEvent, MessageEditedEvent, MessageReceivedEvent, TypingEvent } from '../models/message.model';
+import { MessageDeletedEvent, MessageEditedEvent, MessageReceivedEvent, ReactionAddedEvent, TypingEvent } from '../models/message.model';
+import { ChannelAccessRevokedEvent } from '../models/channel.model';
 import { NotificationReceivedEvent } from '../models/notification.model';
 import { PresenceChangedEvent } from '../models/presence.model';
 
@@ -28,6 +29,9 @@ export class RealtimeService implements OnDestroy {
   readonly presenceChanged$      = new Subject<PresenceChangedEvent>();
   readonly typingStarted$        = new Subject<TypingEvent>();
   readonly typingStopped$        = new Subject<TypingEvent>();
+  readonly reactionAdded$        = new Subject<ReactionAddedEvent>();
+  /** This user lost access to a channel (kicked, removed by sprint sync, or left in another tab). */
+  readonly channelAccessRevoked$ = new Subject<ChannelAccessRevokedEvent>();
 
   /** Starts the SignalR connection. Call once after successful login. */
   async connect(): Promise<void> {
@@ -117,6 +121,8 @@ export class RealtimeService implements OnDestroy {
     this.presenceChanged$.complete();
     this.typingStarted$.complete();
     this.typingStopped$.complete();
+    this.reactionAdded$.complete();
+    this.channelAccessRevoked$.complete();
   }
 
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
@@ -138,5 +144,7 @@ export class RealtimeService implements OnDestroy {
     this.connection.on('presenceChanged',      (e: PresenceChangedEvent)      => this.presenceChanged$.next(e));
     this.connection.on('typingStarted',        (e: TypingEvent)               => this.typingStarted$.next(e));
     this.connection.on('typingStopped',        (e: TypingEvent)               => this.typingStopped$.next(e));
+    this.connection.on('reactionAdded',        (e: ReactionAddedEvent)        => this.reactionAdded$.next(e));
+    this.connection.on('channelAccessRevoked', (e: ChannelAccessRevokedEvent) => this.channelAccessRevoked$.next(e));
   }
 }

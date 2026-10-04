@@ -366,3 +366,11 @@ Command "trusted" (internal/service-token) không check quyền là đúng — n
 
 ### ❌ Check-then-insert để chống trùng
 Luôn có khe race. ✅ Unique index ở DB + bắt `UniqueConstraintViolationException` → `DiscardChanges()` → đọc lại bản thắng (xem patterns.md "Find-or-create").
+
+### ❌ Nhiều type trong 1 file
+`ForbiddenException.cs` từng chứa cả `NotFoundException`, `IPresenceStore.cs` chứa enum, controller chứa request record → tìm theo tên file không ra, dễ vi phạm convention Requests/DTOs.
+✅ **1 top-level type = 1 file**, tên file = tên type (kể cả enum, record, exception, options). Request record → `Controllers/{Feature}/Requests/`, response → `Application/{Feature}/DTOs/`.
+Ngoại lệ duy nhất: contract dùng chung với DASHBOARD phải giống hệt bản bên kia (`Shared.IntegrationEvents/DirectoryEntryChangedEvent.cs`).
+
+### ⚠️ Đừng "làm mỏng" entity
+Method trong entity (`Channel.RemoveMember`, `EnsureWritable`, `FileObject.MarkScanned`...) là **invariant nghiệp vụ** — rich domain model, đúng DDD. Không rút ra service/handler (anemic model → luật bị lặp/bỏ sót ở từng handler). Chỉ cái **không** phải luật domain mới ra khỏi entity: query, mapping DTO, gọi I/O.

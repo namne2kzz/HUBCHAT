@@ -1,6 +1,7 @@
 using HUB.Chat.Application.Channels.Authorization;
 using HUB.Chat.Application.Common.Exceptions;
 using HUB.Chat.Application.Common.Interfaces;
+using HUB.Shared.Contracts.Events;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,7 +10,8 @@ namespace HUB.Chat.Application.Channels.Commands.RemoveChannelMember;
 /// <summary>Handles <see cref="RemoveChannelMemberCommand"/>: removes a member from a channel; no-ops if not present.</summary>
 /// <param name="db">Chat persistence context.</param>
 /// <param name="permissions">Caller workspace permissions (ManageChannels).</param>
-public sealed class RemoveChannelMemberHandler(IChatDbContext db, IWorkspacePermissions permissions)
+/// <param name="events">Integration event publisher (transactional outbox).</param>
+public sealed class RemoveChannelMemberHandler(IChatDbContext db, IWorkspacePermissions permissions, IIntegrationEventPublisher events)
     : IRequestHandler<RemoveChannelMemberCommand>
 {
     /// <summary>Loads the channel, checks the caller may manage members (public API), and removes the member if present.</summary>
@@ -31,6 +33,9 @@ public sealed class RemoveChannelMemberHandler(IChatDbContext db, IWorkspacePerm
         if (channel.HasMember(request.UserId))
         {
             channel.RemoveMember(request.UserId);
+
+            // Realtime revokes the user's live subscription on this event (outbox: only if the removal commits).
+            await events.PublishAsync(new ChannelMemberRemoved(channel.Id, request.UserId), ct);
             await db.SaveChangesAsync(ct);
         }
     }

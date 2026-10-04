@@ -4,6 +4,7 @@
 
 | Ngày | Giờ | Title | Thay đổi |
 |------|-----|-------|----------|
+| 2026-10-04 | — | Đồng bộ reaction realtime (MP-4) | Reaction **mới** → outbox `ReactionAdded` → realtime push `reactionAdded` tới group kênh; client khác cập nhật ngay không cần reload. React lặp lại (đã có) không phát event. |
 | 2026-08-01 | 20:18 | Khởi tạo document | Tạo doc business ban đầu cho feature Reactions (P1) |
 
 ---
@@ -18,6 +19,7 @@ Emoji reaction trên message.
 - 1 user reaction 1 emoji tối đa 1 lần / message (idempotent add; unique `(MessageId, UserId, Emoji)`).
 - Không react message đã xoá.
 - Chỉ member của kênh mới được react.
+- Reaction mới được **đồng bộ realtime** tới mọi người đang mở kênh (`reactionAdded`); react trùng không phát lại. Client bỏ qua reaction đã hiển thị (cùng user + emoji) để chịu được redelivery.
 
 ## Main Workflows
 1. **Add**: `POST /api/v1/messages/{messageId}/reactions` (Emoji) → verify membership → `Message.AddReaction`.

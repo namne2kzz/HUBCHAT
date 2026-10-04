@@ -8,6 +8,7 @@ using HUB.Chat.Domain.Common;
 using HUB.Chat.Domain.Entities;
 using HUB.Chat.Domain.Enums;
 using HUB.Chat.Infrastructure.Persistence;
+using HUB.Shared.Contracts.Events;
 using HUB.TestKit.Db;
 using HUB.TestKit.Fakes;
 using HUB.Chat.Application.Common.Interfaces;
@@ -108,7 +109,7 @@ public sealed class ChannelMembershipHandlerTests
         channel.AddMember(member);
         await lease.Context.SaveChangesAsync(CancellationToken.None);
 
-        await new LeaveChannelHandler(lease.Context)
+        await new LeaveChannelHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new LeaveChannelCommand(channel.Id, member), CancellationToken.None);
 
         (await MemberCountAsync(lease, channel.Id)).ShouldBe(1);
@@ -125,7 +126,7 @@ public sealed class ChannelMembershipHandlerTests
 
         // The domain rule surfaces through the handler unchanged: letting the last owner out would leave
         // the channel with members nobody can administer.
-        await Should.ThrowAsync<DomainException>(() => new LeaveChannelHandler(lease.Context)
+        await Should.ThrowAsync<DomainException>(() => new LeaveChannelHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new LeaveChannelCommand(channel.Id, owner), CancellationToken.None));
 
         (await MemberCountAsync(lease, channel.Id)).ShouldBe(2);
@@ -137,7 +138,7 @@ public sealed class ChannelMembershipHandlerTests
         await using var lease = await ChatDbContextFactory.CreateAsync();
         var channel = await SeedChannelAsync(lease.Context, Guid.NewGuid());
 
-        await Should.ThrowAsync<DomainException>(() => new LeaveChannelHandler(lease.Context)
+        await Should.ThrowAsync<DomainException>(() => new LeaveChannelHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new LeaveChannelCommand(channel.Id, Guid.NewGuid()), CancellationToken.None));
     }
 
@@ -146,7 +147,7 @@ public sealed class ChannelMembershipHandlerTests
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();
 
-        await Should.ThrowAsync<NotFoundException>(() => new LeaveChannelHandler(lease.Context)
+        await Should.ThrowAsync<NotFoundException>(() => new LeaveChannelHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new LeaveChannelCommand(Guid.NewGuid(), Guid.NewGuid()), CancellationToken.None));
     }
 
@@ -221,7 +222,7 @@ public sealed class ChannelMembershipHandlerTests
         channel.AddMember(userId);
         await lease.Context.SaveChangesAsync(CancellationToken.None);
 
-        await new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+        await new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), new RecordingEventPublisher())
             .Handle(new RemoveChannelMemberCommand(channel.Id, userId), CancellationToken.None);
 
         (await MemberCountAsync(lease, channel.Id)).ShouldBe(1);
@@ -236,7 +237,7 @@ public sealed class ChannelMembershipHandlerTests
         // Documented as silently succeeding: DASHBOARD dropping a capacity member should not fail
         // because HUB never had them. The domain would throw, so the handler's HasMember guard is what
         // makes this work.
-        await Should.NotThrowAsync(() => new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+        await Should.NotThrowAsync(() => new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), new RecordingEventPublisher())
             .Handle(new RemoveChannelMemberCommand(channel.Id, Guid.NewGuid()), CancellationToken.None));
 
         (await MemberCountAsync(lease, channel.Id)).ShouldBe(1);
@@ -253,7 +254,7 @@ public sealed class ChannelMembershipHandlerTests
 
         // The HasMember guard makes removal idempotent, but it must not also swallow the last-owner
         // invariant — an internal caller should not be able to strand a channel either.
-        await Should.ThrowAsync<DomainException>(() => new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+        await Should.ThrowAsync<DomainException>(() => new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), new RecordingEventPublisher())
             .Handle(new RemoveChannelMemberCommand(channel.Id, owner), CancellationToken.None));
     }
 
@@ -286,7 +287,7 @@ public sealed class ChannelMembershipHandlerTests
         await lease.Context.SaveChangesAsync(CancellationToken.None);
 
         await Should.ThrowAsync<ForbiddenException>(() =>
-            new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+            new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), new RecordingEventPublisher())
                 .Handle(new RemoveChannelMemberCommand(channel.Id, owner, member), CancellationToken.None));
 
         (await MemberCountAsync(lease, channel.Id)).ShouldBe(2);
@@ -301,7 +302,7 @@ public sealed class ChannelMembershipHandlerTests
         // The permission check runs before the "not a member → no-op" shortcut; otherwise a stranger
         // could tell members from non-members by which ids return 204 vs 403.
         await Should.ThrowAsync<ForbiddenException>(() =>
-            new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+            new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), new RecordingEventPublisher())
                 .Handle(new RemoveChannelMemberCommand(channel.Id, Guid.NewGuid(), Guid.NewGuid()), CancellationToken.None));
     }
 
@@ -326,7 +327,7 @@ public sealed class ChannelMembershipHandlerTests
 
         await new AddChannelMemberHandler(lease.Context, permissions)
             .Handle(new AddChannelMemberCommand(channel.Id, newcomer, manager), CancellationToken.None);
-        await new RemoveChannelMemberHandler(lease.Context, permissions)
+        await new RemoveChannelMemberHandler(lease.Context, permissions, new RecordingEventPublisher())
             .Handle(new RemoveChannelMemberCommand(channel.Id, newcomer, manager), CancellationToken.None);
 
         // The channel role is enough, so the dashboard-gateway hop is never paid.
@@ -361,6 +362,61 @@ public sealed class ChannelMembershipHandlerTests
         await Should.ThrowAsync<ForbiddenException>(() =>
             new AddChannelMemberHandler(lease.Context, permissions)
                 .Handle(new AddChannelMemberCommand(channel.Id, Guid.NewGuid(), otherWsMgr), CancellationToken.None));
+    }
+
+    // ── Realtime revoke (ChannelMemberRemoved via outbox) ───────────────────
+
+    [Fact]
+    public async Task RemovingAMemberAnnouncesTheRemoval()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var owner   = Guid.NewGuid();
+        var member  = Guid.NewGuid();
+        var channel = await SeedChannelAsync(lease.Context, owner, ChannelType.Private);
+        channel.AddMember(member);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var events = new RecordingEventPublisher();
+        lease.Context.SavedChanges += (_, _) => events.MarkSaved();
+        await new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), events)
+            .Handle(new RemoveChannelMemberCommand(channel.Id, member, owner), CancellationToken.None);
+
+        // Realtime revokes the live subscription only on this event; without it the kicked user keeps
+        // receiving the private channel until they reconnect.
+        var e = events.Published.OfType<ChannelMemberRemoved>().ShouldHaveSingleItem();
+        e.ChannelId.ShouldBe(channel.Id);
+        e.UserId.ShouldBe(member);
+        events.PublishedBeforeSave.ShouldBeTrue("the event must ride the outbox transaction with the removal");
+    }
+
+    [Fact]
+    public async Task RemovingSomebodyWhoWasNotAMemberAnnouncesNothing()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var channel = await SeedChannelAsync(lease.Context, Guid.NewGuid());
+        var events  = new RecordingEventPublisher();
+
+        await new RemoveChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), events)
+            .Handle(new RemoveChannelMemberCommand(channel.Id, Guid.NewGuid()), CancellationToken.None);
+
+        events.Published.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task LeavingAnnouncesTheRemovalToo()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var member  = Guid.NewGuid();
+        var channel = await SeedChannelAsync(lease.Context, Guid.NewGuid());
+        channel.AddMember(member);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var events = new RecordingEventPublisher();
+        await new LeaveChannelHandler(lease.Context, events)
+            .Handle(new LeaveChannelCommand(channel.Id, member), CancellationToken.None);
+
+        // The tab that clicked leave unsubscribes itself; the user's other tabs/devices rely on this event.
+        events.Published.OfType<ChannelMemberRemoved>().ShouldHaveSingleItem().UserId.ShouldBe(member);
     }
 
     // ── Mark read ───────────────────────────────────────────────────────────

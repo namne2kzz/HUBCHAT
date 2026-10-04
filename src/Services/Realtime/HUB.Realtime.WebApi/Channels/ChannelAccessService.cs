@@ -50,7 +50,7 @@ public sealed class ChannelAccessService(
     /// <inheritdoc />
     public async Task<bool> CanJoinAsync(Guid channelId, Guid userId, CancellationToken ct)
     {
-        var key = $"hub:rt:canjoin:{channelId}:{userId}";
+        var key = CacheKey(channelId, userId);
 
         var cached = await cache.GetStringAsync(key, ct);
         if (cached is not null) return cached == "1";
@@ -92,6 +92,12 @@ public sealed class ChannelAccessService(
 
         return allowed;
     }
+
+    /// <inheritdoc />
+    public Task InvalidateAsync(Guid channelId, Guid userId, CancellationToken ct) =>
+        cache.RemoveAsync(CacheKey(channelId, userId), ct);
+
+    private static string CacheKey(Guid channelId, Guid userId) => $"hub:rt:canjoin:{channelId}:{userId}";
 
     /// <summary>Shape of chat-service's can-join response.</summary>
     /// <param name="Allowed">True when the channel is public or the user is a member.</param>

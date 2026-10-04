@@ -4,7 +4,9 @@ using HUB.Chat.Domain.Common;
 using HUB.Chat.Domain.Entities;
 using HUB.Chat.Domain.Enums;
 using HUB.Chat.Infrastructure.Persistence;
+using HUB.Shared.Contracts.Events;
 using HUB.TestKit.Db;
+using HUB.TestKit.Fakes;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;
 using Xunit;
@@ -49,7 +51,7 @@ public sealed class AddReactionHandlerTests
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();
 
-        await Should.ThrowAsync<NotFoundException>(() => new AddReactionHandler(lease.Context)
+        await Should.ThrowAsync<NotFoundException>(() => new AddReactionHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new AddReactionCommand(Guid.NewGuid(), ":+1:", Guid.NewGuid()), CancellationToken.None));
     }
 
@@ -60,7 +62,7 @@ public sealed class AddReactionHandlerTests
         var author = Guid.NewGuid();
         var (_, message) = await SeedAsync(lease.Context, author);
 
-        await new AddReactionHandler(lease.Context)
+        await new AddReactionHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new AddReactionCommand(message.Id, ":+1:", author), CancellationToken.None);
 
         (await ReactionCountAsync(lease, message.Id)).ShouldBe(1);
@@ -74,7 +76,7 @@ public sealed class AddReactionHandlerTests
 
         // Reading a public channel is open; contributing to it is not. A reaction is a contribution, and
         // it is attributed to the person by name.
-        await Should.ThrowAsync<ForbiddenException>(() => new AddReactionHandler(lease.Context)
+        await Should.ThrowAsync<ForbiddenException>(() => new AddReactionHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new AddReactionCommand(message.Id, ":+1:", Guid.NewGuid()), CancellationToken.None));
 
         (await ReactionCountAsync(lease, message.Id)).ShouldBe(0);
@@ -86,7 +88,7 @@ public sealed class AddReactionHandlerTests
         await using var lease = await ChatDbContextFactory.CreateAsync();
         var (_, message) = await SeedAsync(lease.Context, Guid.NewGuid(), ChannelType.Private);
 
-        await Should.ThrowAsync<ForbiddenException>(() => new AddReactionHandler(lease.Context)
+        await Should.ThrowAsync<ForbiddenException>(() => new AddReactionHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new AddReactionCommand(message.Id, ":+1:", Guid.NewGuid()), CancellationToken.None));
     }
 
@@ -97,7 +99,7 @@ public sealed class AddReactionHandlerTests
         var author = Guid.NewGuid();
         var (_, message) = await SeedAsync(lease.Context, author);
 
-        var handler = new AddReactionHandler(lease.Context);
+        var handler = new AddReactionHandler(lease.Context, new RecordingEventPublisher());
         var command = new AddReactionCommand(message.Id, ":+1:", author);
 
         await handler.Handle(command, CancellationToken.None);
@@ -115,7 +117,7 @@ public sealed class AddReactionHandlerTests
         var author = Guid.NewGuid();
         var (_, message) = await SeedAsync(lease.Context, author);
 
-        var handler = new AddReactionHandler(lease.Context);
+        var handler = new AddReactionHandler(lease.Context, new RecordingEventPublisher());
         await handler.Handle(new AddReactionCommand(message.Id, ":+1:", author), CancellationToken.None);
         await handler.Handle(new AddReactionCommand(message.Id, ":tada:", author), CancellationToken.None);
 
@@ -133,7 +135,7 @@ public sealed class AddReactionHandlerTests
         channel.AddMember(second);
         await lease.Context.SaveChangesAsync(CancellationToken.None);
 
-        var handler = new AddReactionHandler(lease.Context);
+        var handler = new AddReactionHandler(lease.Context, new RecordingEventPublisher());
         await handler.Handle(new AddReactionCommand(message.Id, ":+1:", author), CancellationToken.None);
         await handler.Handle(new AddReactionCommand(message.Id, ":+1:", second), CancellationToken.None);
 
@@ -147,7 +149,7 @@ public sealed class AddReactionHandlerTests
         var author = Guid.NewGuid();
         var (_, message) = await SeedAsync(lease.Context, author);
 
-        await Should.ThrowAsync<DomainException>(() => new AddReactionHandler(lease.Context)
+        await Should.ThrowAsync<DomainException>(() => new AddReactionHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new AddReactionCommand(message.Id, "   ", author), CancellationToken.None));
     }
 
@@ -161,7 +163,7 @@ public sealed class AddReactionHandlerTests
         message.SoftDelete();
         await lease.Context.SaveChangesAsync(CancellationToken.None);
 
-        await Should.ThrowAsync<DomainException>(() => new AddReactionHandler(lease.Context)
+        await Should.ThrowAsync<DomainException>(() => new AddReactionHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new AddReactionCommand(message.Id, ":+1:", author), CancellationToken.None));
     }
 
@@ -177,7 +179,44 @@ public sealed class AddReactionHandlerTests
 
         // Confirms the check reads live membership rather than something captured when the message was
         // written — somebody who joins later can react to older messages.
-        await Should.NotThrowAsync(() => new AddReactionHandler(lease.Context)
+        await Should.NotThrowAsync(() => new AddReactionHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new AddReactionCommand(message.Id, ":+1:", joiner), CancellationToken.None));
+    }
+
+    // ── Realtime sync (ReactionAdded via outbox) ────────────────────────────
+
+    [Fact]
+    public async Task ANewReactionIsAnnouncedOnceWithItsChannel()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author = Guid.NewGuid();
+        var (channel, message) = await SeedAsync(lease.Context, author);
+        var events = new RecordingEventPublisher();
+
+        await new AddReactionHandler(lease.Context, events)
+            .Handle(new AddReactionCommand(message.Id, ":+1:", author), CancellationToken.None);
+
+        // ChannelId is what realtime routes on — without it the push has no group to go to.
+        var e = events.Published.OfType<ReactionAdded>().ShouldHaveSingleItem();
+        e.MessageId.ShouldBe(message.Id);
+        e.ChannelId.ShouldBe(channel.Id);
+        e.UserId.ShouldBe(author);
+        e.Emoji.ShouldBe(":+1:");
+    }
+
+    [Fact]
+    public async Task ARepeatedReactionIsNotAnnouncedAgain()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author = Guid.NewGuid();
+        var (_, message) = await SeedAsync(lease.Context, author);
+        var events  = new RecordingEventPublisher();
+        var handler = new AddReactionHandler(lease.Context, events);
+
+        await handler.Handle(new AddReactionCommand(message.Id, ":+1:", author), CancellationToken.None);
+        await handler.Handle(new AddReactionCommand(message.Id, ":+1:", author), CancellationToken.None);
+
+        // A double click changes nothing, so it must not push a duplicate to every open client.
+        events.Published.OfType<ReactionAdded>().Count().ShouldBe(1);
     }
 }

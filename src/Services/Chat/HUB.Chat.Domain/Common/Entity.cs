@@ -15,6 +15,3 @@ public abstract class Entity
     /// <summary>Stamps <see cref="UpdatedAt"/> with the current UTC time.</summary>
     protected void Touch() => UpdatedAt = DateTime.UtcNow;
 }
-
-/// <summary>Marker for aggregate roots — the only entities a repository/DbSet should load and save directly.</summary>
-public abstract class AggregateRoot : Entity;
