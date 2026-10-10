@@ -60,6 +60,7 @@ builder.Services.AddHubMessaging(builder.Configuration, bus =>
 {
     bus.AddConsumer<MessageSentConsumer>();
     bus.AddConsumer<ReactionAddedConsumer>();
+    bus.AddConsumer<NotificationCreatedConsumer>();
     // Revokes a removed member's live subscription (group + join cache) — see the consumer for why.
     bus.AddConsumer<ChannelMemberRemovedConsumer>();
 });

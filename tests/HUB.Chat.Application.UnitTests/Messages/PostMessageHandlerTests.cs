@@ -241,6 +241,34 @@ public sealed class PostMessageHandlerTests
     }
 
     [Fact]
+    public async Task MessageSentCarriesTheWholeMessageForRealtime()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author  = Guid.NewGuid();
+        var channel = ChannelWith(author);
+        lease.Context.Channels.Add(channel);
+        var parent = Message.Post(channel.Id, author, "parent");
+        lease.Context.Messages.Add(parent);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var events = new RecordingEventPublisher();
+        var body   = "**release** " + new string('z', 400);
+
+        var dto = await new PostMessageHandler(lease.Context, events).Handle(
+            new PostMessageCommand(channel.Id, body, MessageFormat.Markdown, parent.Id, [], author),
+            CancellationToken.None);
+
+        // Recipients render straight from this push. With only the 140-char preview they saw a truncated,
+        // unrendered message until reload; without ParentId a thread reply landed in the main timeline.
+        var sent = events.Single<MessageSent>();
+        sent.Body.ShouldBe(body);
+        sent.Format.ShouldBe((int)MessageFormat.Markdown);
+        sent.ParentId.ShouldBe(parent.Id);
+        sent.CreatedAt.ShouldBe(dto.CreatedAt);
+        sent.Preview.Length.ShouldBe(140); // still there for notifications / sidebar
+    }
+
+    [Fact]
     public async Task EventsArePublishedBeforeTheSaveCommits()
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();

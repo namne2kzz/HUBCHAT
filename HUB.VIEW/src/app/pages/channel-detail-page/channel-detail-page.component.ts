@@ -10,8 +10,10 @@ import { RealtimeService } from '../../services/realtime.service';
 import { DirectoryService } from '../../services/directory.service';
 import { AuthService } from '../../services/auth.service';
 import { ChannelDto, ChannelType } from '../../models/channel.model';
-import { MessageDto, MessageFormat } from '../../models/message.model';
+import { MessageDto } from '../../models/message.model';
 import { applyReaction } from '../../utils/reaction.util';
+import { mergeMessages } from '../../utils/message-merge.util';
+import { messageFromRealtime } from '../../utils/realtime-message.util';
 import { DirectoryUser } from '../../models/directory.model';
 import { MessageListComponent } from '../../components/message-list/message-list.component';
 import { MessageInputComponent, ComposerSubmit } from '../../components/message-input/message-input.component';
@@ -122,8 +124,7 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   protected loadMore(): void {
     if (!this.hasMore() || !this.cursor) return;
     this.messageSvc.list(this.channelId, this.cursor).subscribe(page => {
-      const older = [...page.items].reverse();
-      this.messages.update(prev => [...older, ...prev]);
+      this.messages.update(prev => mergeMessages(prev, page.items, 'replace'));
       this.cursor = page.nextCursor;
       this.hasMore.set(page.nextCursor !== null);
       this.resolveAuthors(page.items);
@@ -136,7 +137,7 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     clearTimeout(this.typingTimer ?? undefined);
     this.realtime.stopTyping(this.channelId);
     this.messageSvc.send(this.channelId, { body: payload.body, format: payload.format }).subscribe(msg => {
-      this.messages.update(prev => [...prev, msg]);
+      this.messages.update(prev => mergeMessages(prev, [msg], 'replace'));
       this.resolveAuthors([msg]);
     });
   }
@@ -310,12 +311,60 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
 
   private loadMessages(): void {
     this.messageSvc.list(this.channelId).subscribe(page => {
-      this.messages.set([...page.items].reverse());
+      // Merge rather than set: a realtime push can land between the query and its response.
+      this.messages.update(prev => mergeMessages(prev, page.items, 'replace'));
       this.cursor = page.nextCursor;
       this.hasMore.set(page.nextCursor !== null);
       this.loading.set(false);
       this.resolveAuthors(page.items);
     });
+  }
+
+  /** Page size for reconnect catch-up (the API maximum). */
+  private static readonly CatchUpPageSize = 100;
+
+  /** Beyond this many catch-up pages the gap is so large that a fresh first page is cheaper. */
+  private static readonly CatchUpMaxPages = 5;
+
+  /**
+   * Recovers what was pushed while the connection was down. SignalR's Redis backplane does not store
+   * messages, so anything sent during the gap is simply gone from the realtime stream.
+   * Re-joins the group FIRST: from that moment new messages arrive by push, and everything before it is
+   * covered by the fetch — fetching first would leave a window between the two where messages fall through.
+   */
+  private async catchUp(): Promise<void> {
+    const channelId = this.channelId;
+    if (!channelId) return;
+
+    await this.realtime.joinChannel(channelId).catch(() => { /* the shell retries joins on reconnect */ });
+
+    const newest = this.messages().at(-1);
+    if (!newest) { this.loadMessages(); return; }
+    this.fetchAfter(channelId, newest.id, 1);
+  }
+
+  /** One catch-up page; recurses until caught up, falls back to a reload when the gap is too large or the anchor is gone. */
+  private fetchAfter(channelId: string, afterId: string, page: number): void {
+    this.messageSvc.listAfter(channelId, afterId, ChannelDetailPageComponent.CatchUpPageSize).subscribe({
+      next: items => {
+        if (channelId !== this.channelId) return; // user switched channel meanwhile
+        this.messages.update(prev => mergeMessages(prev, items, 'replace'));
+        this.resolveAuthors(items);
+        if (items.length < ChannelDetailPageComponent.CatchUpPageSize) return; // caught up
+        if (page >= ChannelDetailPageComponent.CatchUpMaxPages) { this.reloadMessages(); return; }
+        this.fetchAfter(channelId, items[items.length - 1].id, page + 1);
+      },
+      // 404 = anchor unknown to the server (e.g. a stale stub); any failure → start over from the newest page.
+      error: () => { if (channelId === this.channelId) this.reloadMessages(); },
+    });
+  }
+
+  /** Drops the timeline and loads the newest page again. */
+  private reloadMessages(): void {
+    this.messages.set([]);
+    this.cursor = null;
+    this.hasMore.set(false);
+    this.loadMessages();
   }
 
   /** Fetches display names for author ids not yet cached. @param msgs Messages to resolve. */
@@ -335,19 +384,21 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   }
 
   private subscribeRealtime(): void {
+    this.realtime.reconnected$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => void this.catchUp());
+
     this.realtime.messageReceived$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(e => {
         if (e.channelId !== this.channelId) return;
-        // The realtime event is flat (id + preview) — build a MessageDto for display.
-        const msg: MessageDto = {
-          id: e.messageId, channelId: e.channelId, parentId: null,
-          replyToId: null, forwardedFromId: null,
-          authorId: e.authorId, body: e.preview, format: MessageFormat.Plain,
-          mentions: e.mentions ?? [], reactions: [], attachments: [], editedAt: null, createdAt: e.sentAt,
-        };
-        // Dedupe — the sender already appended its own message from the POST response.
-        this.messages.update(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+        const msg = messageFromRealtime(e);
+        // The timeline shows top-level messages only (as the list API does) — a thread reply here would
+        // appear now and vanish on reload.
+        if (msg.parentId) return;
+        // 'keep': never overwrite a copy already in the list — the sender's POST response or a catch-up
+        // fetch may carry reactions added since, and old events still deliver only a preview stub.
+        this.messages.update(prev => mergeMessages(prev, [msg], 'keep'));
         this.resolveAuthors([msg]);
       });
 

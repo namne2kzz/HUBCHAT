@@ -14,7 +14,7 @@ public sealed class UserMentionedConsumer(ISender mediator) : IConsumer<UserMent
     {
         var e = context.Message;
         return mediator.Send(
-            new CreateMentionNotificationCommand(e.MentionedUserId, e.MessageId, e.ChannelId, e.ByUserId, Preview: string.Empty),
+            new CreateMentionNotificationCommand(e.MentionedUserId, e.MessageId, e.ChannelId, e.ByUserId, Preview: e.Preview ?? string.Empty),
             context.CancellationToken);
     }
 }

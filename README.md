@@ -1,8 +1,10 @@
-# HUB
+# NHub
 
-A real-time chat and collaboration add-on for [DASHBOARD](../DASHBOARD). Built as a set of independent microservices — chat, notifications, media, and real-time presence — communicating over RabbitMQ and exposed through a single YARP gateway. Self-hosted via Docker Compose.
+A real-time chat and collaboration add-on for [NFlow](../DASHBOARD). Built as a set of independent microservices — chat, notifications, media, and real-time presence — communicating over RabbitMQ and exposed through a single YARP gateway. Self-hosted via Docker Compose.
 
-> **HUB is an optional extension.** DASHBOARD runs independently; HUB requires a running DASHBOARD instance for authentication and user data.
+> Formerly *Nexus HUB*. The repository, solution and service projects keep the `HUB` name.
+
+> **NHub is an optional extension.** NFlow runs independently; NHub requires a running NFlow instance for authentication and user data.
 
 ## Tech Stack
 
@@ -16,14 +18,14 @@ A real-time chat and collaboration add-on for [DASHBOARD](../DASHBOARD). Built a
 | Object Storage | MinIO (S3-compatible) |
 | Observability | OpenTelemetry → Jaeger |
 | Infrastructure | Docker · Docker Compose · GitHub Actions |
-| Frontend | Angular 20 (planned — `HUB.VIEW`) |
+| Frontend | Angular 19 (`HUB.VIEW`) |
 
 ## Services
 
 | Service | Responsibility |
 | --- | --- |
 | `HUB.Gateway` | YARP entry point — JWT validation, routing, rate limiting |
-| `HUB.DashboardGateway` | Pulls member/user data from DASHBOARD `/internal/v1/*` with Redis caching |
+| `HUB.DashboardGateway` | Pulls member/user data from NFlow `/internal/v1/*` with Redis caching |
 | `HUB.Chat` | Channels, messages, threads, reactions, keyset pagination, outbox |
 | `HUB.Realtime` | SignalR hub, Redis backplane, presence, message fan-out |
 | `HUB.Notification` | Notification persistence and delivery |
@@ -32,7 +34,7 @@ A real-time chat and collaboration add-on for [DASHBOARD](../DASHBOARD). Built a
 ## Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine + Compose v2)
-- A running **DASHBOARD** instance (for SSO and internal API)
+- A running **NFlow** instance (for SSO and internal API)
 - .NET 10 SDK — only required for local development without Docker
 
 ## Quick Start
@@ -50,23 +52,24 @@ docker compose --env-file .env up -d --build
 
 | Service | URL |
 | --- | --- |
+| Web (Angular) | <http://localhost:4202> |
 | Gateway (entry point) | <http://localhost:8080> |
 | Gateway health | <http://localhost:8080/health> |
-| RabbitMQ UI | <http://localhost:15672> |
+| RabbitMQ UI (shared with NFlow) | <http://localhost:15672> |
 | MinIO console | <http://localhost:9001> |
 | Jaeger UI | <http://localhost:16686> |
-| PgAdmin | <http://localhost:5050> |
+| PgAdmin | <http://localhost:5480> |
 
-## Integration with DASHBOARD
+## Integration with NFlow
 
-HUB uses DASHBOARD as its identity provider via a shared HMAC-SHA256 JWT secret. All tokens issued by DASHBOARD are accepted by HUB's gateway without an additional round-trip.
+NHub uses NFlow as its identity provider via a shared HMAC-SHA256 JWT secret. All tokens issued by NFlow are accepted by NHub's gateway without an additional round-trip.
 
 Two service-to-service tokens guard internal API calls:
 
 | Token | Direction | Env variable |
 | --- | --- | --- |
-| Internal API token | HUB → DASHBOARD | `INTERNAL_API_TOKEN` |
-| HUB Chat token | DASHBOARD → HUB | `HUB_CHAT_INTERNAL_TOKEN` |
+| Internal API token | NHub → NFlow | `INTERNAL_API_TOKEN` |
+| NHub Chat token | NFlow → NHub | `HUB_CHAT_INTERNAL_TOKEN` |
 
 Both values must be identical on each side. Set them in both `DASHBOARD/.env` and `HUB/.env`.
 
@@ -77,9 +80,9 @@ See `.env.example` for the full list. Key variables:
 | Variable | Description |
 | --- | --- |
 | `JWT_SECRET` | Shared JWT signing secret — **must match** `DASHBOARD/.env` |
-| `JWT_ISSUER / AUDIENCE` | Must match DASHBOARD's JWT configuration |
-| `INTERNAL_API_TOKEN` | Token for HUB → DASHBOARD service calls |
-| `HUB_CHAT_INTERNAL_TOKEN` | Token for DASHBOARD → HUB service calls |
+| `JWT_ISSUER / AUDIENCE` | Must match NFlow's JWT configuration |
+| `INTERNAL_API_TOKEN` | Token for NHub → NFlow service calls |
+| `HUB_CHAT_INTERNAL_TOKEN` | Token for NFlow → NHub service calls |
 | `POSTGRES_USER / PASSWORD` | PostgreSQL credentials |
 | `RABBITMQ_USER / PASSWORD` | RabbitMQ credentials |
 | `MINIO_ROOT_USER / PASSWORD` | MinIO credentials |
@@ -97,7 +100,7 @@ src/
 │   └── HUB.Shared.Observability         # OpenTelemetry, health checks
 └── Services/
     ├── Chat/                            # Channel, message, thread, reaction, member
-    ├── DashboardGateway/                # DASHBOARD internal API proxy + Redis cache
+    ├── DashboardGateway/                # NFlow internal API proxy + Redis cache
     ├── Media/                           # MinIO file storage
     ├── Notification/                    # Notification persistence
     └── Realtime/                        # SignalR hub + presence + fan-out
@@ -113,7 +116,7 @@ tests/
 ├── HUB.Media.Domain.UnitTests
 └── HUB.DashboardGateway.UnitTests
 
-HUB.VIEW/                               # Angular 20 frontend (planned)
+HUB.VIEW/                               # Angular 19 frontend
 ```
 
 ## Local Development (without Docker)

@@ -183,7 +183,7 @@ describe('AuthService', () => {
     });
 
     it('preserves a requested return path', () => {
-      // A deep link from DASHBOARD ("Open in HUB" on a sprint) has to survive the sign-in round trip.
+      // A deep link from DASHBOARD ("Open in NHub" on a sprint) has to survive the sign-in round trip.
       service.signIn('/acme/channels');
 
       expect(navigation.goTo.calls.mostRecent().args[0])

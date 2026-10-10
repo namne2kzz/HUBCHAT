@@ -1,8 +1,7 @@
-using HUB.Chat.Application.Common.Exceptions;
+using HUB.Chat.Application.Channels.Authorization;
 using HUB.Chat.Application.Common.Interfaces;
 using HUB.Chat.Application.Common.Models;
 using HUB.Chat.Application.Messages.DTOs;
-using HUB.Chat.Domain.Enums;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,14 +19,7 @@ public sealed class ListMessagesHandler(IChatDbContext db) : IRequestHandler<Lis
     {
         var limit = Math.Clamp(request.Limit, 1, 100);
 
-        var channel = await db.Channels.AsNoTracking()
-            .Where(c => c.Id == request.ChannelId)
-            .Select(c => new { c.Type, IsMember = c.Members.Any(m => m.UserId == request.ActingUserId) })
-            .FirstOrDefaultAsync(ct)
-            ?? throw new NotFoundException("Channel not found.");
-
-        if (channel.Type != ChannelType.Public && !channel.IsMember)
-            throw new ForbiddenException("You are not a member of this channel.");
+        await ChannelReadAccess.EnsureCanReadAsync(db, request.ChannelId, request.ActingUserId, ct);
 
         var query = db.Messages.AsNoTracking()
             .Include(m => m.Reactions)

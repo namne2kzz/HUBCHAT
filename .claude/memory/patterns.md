@@ -301,8 +301,18 @@ await db.SaveChangesAsync(ct);                        // commit + delivery
 ```
 MassTransit EF outbox (`AddEntityFrameworkOutbox<TDbContext>` + `UseBusOutbox`) → không mất/không ma event. Xem skill `outbox-pattern`.
 
-### Idempotent consumer
-Dedupe theo `IntegrationEvent.EventId` (Inbox của MassTransit). Consume phải chịu được double-delivery (at-least-once).
+### Idempotent consumer (Inbox — mẫu: Notification)
+Inbox + consumer outbox của MassTransit EF, **sau** retry (mỗi retry = transaction mới):
+```csharp
+bus.AddEntityFrameworkOutbox<XDbContext>(o => { o.UsePostgres(); o.UseBusOutbox(); });
+bus.AddConfigureEndpointsCallback((ctx, _, ep) => ep.UseEntityFrameworkOutbox<XDbContext>(ctx));
+```
+- DbContext: `AddInboxStateEntity/AddOutboxMessageEntity/AddOutboxStateEntity` + migration.
+- Event publish trong consumer → vào outbox, chỉ đi khi transaction commit.
+- Side-effect không nằm trong DB (email, HTTP) → **consumer riêng** nghe event, retry độc lập; vẫn at-least-once.
+- Chốt cuối: unique index nghiệp vụ + `Ignore<UniqueConstraintViolationException>()` trong retry.
+- Test inbox bằng bước **không có dedupe nào khác** (vd email) — test row đếm 1 vẫn pass khi tắt inbox nếu handler tự check.
+- Bus wiring public (`AddNotificationConsumers`) để integration test dùng đúng cấu hình production.
 
 ### Find-or-create / idempotent command (chống race)
 Check-then-insert **không đủ** (khe race giữa 2 lệnh). Unique index ở DB là đảm bảo; check trước chỉ là đường nhanh.

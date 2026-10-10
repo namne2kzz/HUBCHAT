@@ -250,6 +250,48 @@ public sealed class MessageFlowTests(PostgresFixture database) : IAsyncLifetime
         page!.Items.Count.ShouldBe(3);
     }
 
+    // ── Reconnect catch-up (messages after an anchor) ───────────────────────
+
+    [Fact]
+    public async Task CatchUpReturnsWhatWasPostedAfterTheAnchorInOrder()
+    {
+        var author = Guid.NewGuid();
+        using var client = As(author);
+        var channelId = await CreateChannelAsync(client);
+
+        var ids = new List<Guid>();
+        foreach (var body in new[] { "seen", "missed-1", "missed-2", "missed-3" })
+        {
+            var r = await client.PostAsJsonAsync($"/api/v1/channels/{channelId}/messages", Post(body));
+            ids.Add((await r.Content.ReadFromJsonAsync<MessageResponse>())!.Id);
+        }
+
+        // Page of 2 then the rest — the client loops on the last id, so the seek must be exact on uuid ordering.
+        var first = await client.GetFromJsonAsync<List<MessageResponse>>(
+            $"/api/v1/channels/{channelId}/messages/after/{ids[0]}?limit=2");
+        var rest  = await client.GetFromJsonAsync<List<MessageResponse>>(
+            $"/api/v1/channels/{channelId}/messages/after/{first![^1].Id}?limit=2");
+
+        first.Select(m => m.Body).Concat(rest!.Select(m => m.Body))
+             .ShouldBe(["missed-1", "missed-2", "missed-3"]);
+    }
+
+    [Fact]
+    public async Task CatchUpWithAnAnchorFromAnotherChannelIs404()
+    {
+        var author = Guid.NewGuid();
+        using var client = As(author);
+        var channelId = await CreateChannelAsync(client);
+        var otherId   = await CreateChannelAsync(client);
+        var posted    = await client.PostAsJsonAsync($"/api/v1/channels/{otherId}/messages", Post("elsewhere"));
+        var foreignId = (await posted.Content.ReadFromJsonAsync<MessageResponse>())!.Id;
+
+        var response = await client.GetAsync($"/api/v1/channels/{channelId}/messages/after/{foreignId}");
+
+        // 404 tells the client to reload from the newest page rather than trust a bogus position.
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
     // ── Reactions ───────────────────────────────────────────────────────────
 
     [Fact]

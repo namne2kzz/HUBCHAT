@@ -46,6 +46,7 @@
     <Project Path="tests/HUB.Chat.IntegrationTests/HUB.Chat.IntegrationTests.csproj" />
     <Project Path="tests/HUB.Notification.Domain.UnitTests/HUB.Notification.Domain.UnitTests.csproj" />
     <Project Path="tests/HUB.Notification.UnitTests/HUB.Notification.UnitTests.csproj" />
+    <Project Path="tests/HUB.Notification.IntegrationTests/HUB.Notification.IntegrationTests.csproj" />
     <Project Path="tests/HUB.Realtime.UnitTests/HUB.Realtime.UnitTests.csproj" />
     <Project Path="tests/HUB.Shared.Messaging.UnitTests/HUB.Shared.Messaging.UnitTests.csproj" />
     <Project Path="tests/HUB.Media.Domain.UnitTests/HUB.Media.Domain.UnitTests.csproj" />

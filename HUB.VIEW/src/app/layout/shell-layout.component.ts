@@ -60,10 +60,10 @@ export class ShellLayoutComponent implements OnInit {
       }
     });
 
-    // Browser tab badge — reflect total unread in the document title (e.g. "(3) Nexus HUB").
+    // Browser tab badge — reflect total unread in the document title (e.g. "(3) NHub").
     effect(() => {
       const n = this.totalUnread();
-      this.document.title = n > 0 ? `(${n > 99 ? '99+' : n}) Nexus HUB` : 'Nexus HUB';
+      this.document.title = n > 0 ? `(${n > 99 ? '99+' : n}) NHub` : 'NHub';
     });
 
     // Clear the unread badge whenever a channel is opened (covers deep-links + sidebar clicks).

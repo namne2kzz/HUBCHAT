@@ -90,6 +90,21 @@ describe('MessageService', () => {
     });
   });
 
+  describe('listAfter', () => {
+    it('asks for messages after the anchor with the page size', () => {
+      let received: unknown;
+      service.listAfter('c1', 'm9', 100).subscribe(items => (received = items));
+
+      // Reconnect catch-up: the anchor is a path segment, the page size a query param.
+      const req = http.expectOne(r => r.url === `${MESSAGES}/after/m9`);
+      expect(req.request.method).toBe('GET');
+      expect(req.request.params.get('limit')).toBe('100');
+      req.flush([{ id: 'm10' }]);
+
+      expect(received).toEqual([{ id: 'm10' }]);
+    });
+  });
+
   describe('send', () => {
     it('posts the message to the channel', () => {
       const request = { body: 'hello', format: 1, parentId: null, mentionedUserIds: [] };

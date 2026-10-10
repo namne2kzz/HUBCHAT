@@ -64,7 +64,7 @@ export interface CursorPage<T> {
 }
 
 // ── Realtime (SignalR) event payloads ──────────────────────────────────────
-/** Flat payload pushed by realtime-service (MessageSentConsumer) — not a full MessageDto. */
+/** Payload pushed by realtime-service (MessageSentConsumer). Carries the full message at post time; old events only the preview. */
 export interface MessageReceivedEvent {
   messageId: string;
   channelId: string;
@@ -72,6 +72,14 @@ export interface MessageReceivedEvent {
   preview: string;
   mentions: string[];
   sentAt: string;
+  /** Full body — null for events published before the contract carried it (fall back to preview). */
+  body?: string | null;
+  /** Body format (0 = Plain, 1 = Markdown); null on old events. */
+  format?: MessageFormat | null;
+  /** Thread parent for a reply; null for a top-level message. */
+  parentId?: string | null;
+  /** Message creation time (timeline sort key); null on old events. */
+  createdAt?: string | null;
 }
 
 export interface MessageEditedEvent {

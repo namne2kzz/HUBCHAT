@@ -79,6 +79,47 @@ public sealed class MessageSentConsumerTests
     }
 
     [Fact]
+    public async Task ThePayloadCarriesTheFullMessageWhenTheEventHasIt()
+    {
+        var clients = Substitute.For<IHubClients>();
+        var group   = Substitute.For<IClientProxy>();
+        var hub     = Substitute.For<IHubContext<ChatHub>>();
+        hub.Clients.Returns(clients);
+        clients.Group(Arg.Any<string>()).Returns(group);
+
+        var createdAt = new DateTime(2026, 10, 8, 10, 0, 0, DateTimeKind.Utc);
+        var parentId  = Guid.NewGuid();
+        var sent = AnEvent(Guid.NewGuid()) with { Body = "full body", Format = 1, ParentId = parentId, CreatedAt = createdAt };
+
+        object?[]? captured = null;
+        await group.SendCoreAsync(Arg.Any<string>(), Arg.Do<object?[]>(a => captured = a), Arg.Any<CancellationToken>());
+
+        await new MessageSentConsumer(hub).Consume(ConsumeContextFor(sent));
+
+        var payload = captured!.ShouldHaveSingleItem()!;
+        var type    = payload.GetType();
+        type.GetProperty("body")!.GetValue(payload).ShouldBe("full body");
+        type.GetProperty("format")!.GetValue(payload).ShouldBe(1);
+        type.GetProperty("parentId")!.GetValue(payload).ShouldBe(parentId);
+        type.GetProperty("createdAt")!.GetValue(payload).ShouldBe(createdAt);
+    }
+
+    [Fact]
+    public async Task AnOldEventWithoutTheFullFieldsStillPushes()
+    {
+        // Events already in the outbox/queue when this deploys lack Body etc.; they must not fail the
+        // consumer — the client falls back to the preview.
+        var clients = Substitute.For<IHubClients>();
+        var group   = Substitute.For<IClientProxy>();
+        var hub     = Substitute.For<IHubContext<ChatHub>>();
+        hub.Clients.Returns(clients);
+        clients.Group(Arg.Any<string>()).Returns(group);
+
+        await Should.NotThrowAsync(() => new MessageSentConsumer(hub).Consume(ConsumeContextFor(AnEvent(Guid.NewGuid()))));
+        await group.Received(1).SendCoreAsync("messageReceived", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ThePayloadCarriesTheMessageDetails()
     {
         var clients = Substitute.For<IHubClients>();

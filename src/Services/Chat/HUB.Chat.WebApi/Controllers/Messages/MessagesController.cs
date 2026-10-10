@@ -3,6 +3,7 @@ using HUB.Chat.Application.Messages.Commands.AddReaction;
 using HUB.Chat.Application.Messages.Commands.PostMessage;
 using HUB.Chat.Application.Messages.DTOs;
 using HUB.Chat.Application.Messages.Queries.ListMessages;
+using HUB.Chat.Application.Messages.Queries.ListMessagesAfter;
 using HUB.Chat.WebApi.Controllers.Messages.Requests;
 using HUB.Shared.Auth;
 using MediatR;
@@ -48,6 +49,22 @@ public sealed class MessagesController(ISender mediator, ICurrentUser currentUse
     public async Task<IActionResult> List(Guid channelId, [FromQuery] string? cursor, [FromQuery] int limit, CancellationToken ct)
     {
         var result = await mediator.Send(new ListMessagesQuery(channelId, currentUser.Id, cursor, limit == 0 ? 50 : limit), ct);
+        return Ok(result);
+    }
+
+    /// <summary>Lists top-level messages newer than a given message (oldest first) — reconnect catch-up.</summary>
+    /// <param name="channelId">Channel id.</param>
+    /// <param name="messageId">The newest message the client already has.</param>
+    /// <param name="limit">Page size (1..100, default 100). Fewer items than this means caught up.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>200 with the newer messages; 404 when the anchor is not in this channel (client should reload).</returns>
+    [HttpGet("channels/{channelId:guid}/messages/after/{messageId:guid}")]
+    [ProducesResponseType<IReadOnlyList<MessageDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ListAfter(Guid channelId, Guid messageId, [FromQuery] int limit, CancellationToken ct)
+    {
+        var result = await mediator.Send(
+            new ListMessagesAfterQuery(channelId, currentUser.Id, messageId, limit == 0 ? 100 : limit), ct);
         return Ok(result);
     }
 

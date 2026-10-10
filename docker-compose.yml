@@ -224,7 +224,7 @@ services:
     build:
       context: .
       dockerfile: HUB.VIEW/Dockerfile
-    ports: ["4202:80"] # Nexus HUB frontend
+    ports: ["4202:80"] # NHub frontend
     depends_on: [gateway]
 
 volumes:

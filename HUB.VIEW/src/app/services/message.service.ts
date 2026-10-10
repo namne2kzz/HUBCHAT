@@ -24,6 +24,20 @@ export class MessageService {
   }
 
   /**
+   * Lists top-level messages newer than a given one, oldest first — reconnect catch-up.
+   * Page by passing the last returned id until fewer than `limit` items come back.
+   * @param channelId Target channel.
+   * @param afterMessageId The newest message the client already has.
+   * @param limit Page size (1..100). Default 100.
+   * @returns Newer messages, oldest first. Errors with 404 when the anchor is unknown (reload instead).
+   */
+  listAfter(channelId: string, afterMessageId: string, limit = 100): Observable<MessageDto[]> {
+    return this.http.get<MessageDto[]>(`${this.channelUrl(channelId)}/after/${afterMessageId}`, {
+      params: new HttpParams().set('limit', limit),
+    });
+  }
+
+  /**
    * Posts a message to a channel (POST /channels/{channelId}/messages), retrying transient failures.
    * One `clientMessageId` is fixed per call and reused on every retry, so if the server committed but the
    * response was lost (network drop, gateway 502/504) the retry returns the original message instead of

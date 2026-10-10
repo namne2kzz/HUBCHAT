@@ -32,6 +32,11 @@ export class RealtimeService implements OnDestroy {
   readonly reactionAdded$        = new Subject<ReactionAddedEvent>();
   /** This user lost access to a channel (kicked, removed by sprint sync, or left in another tab). */
   readonly channelAccessRevoked$ = new Subject<ChannelAccessRevokedEvent>();
+  /**
+   * Emits after an automatic reconnect. Group memberships and anything pushed while disconnected are lost —
+   * subscribers re-join what they need and fetch the gap (see channel-detail-page catch-up).
+   */
+  readonly reconnected$ = new Subject<void>();
 
   /** Starts the SignalR connection. Call once after successful login. */
   async connect(): Promise<void> {
@@ -49,7 +54,10 @@ export class RealtimeService implements OnDestroy {
 
     this.registerHandlers();
     this.connection.onreconnecting(() => this.connectionState.set('reconnecting'));
-    this.connection.onreconnected(() => this.connectionState.set('connected'));
+    this.connection.onreconnected(() => {
+      this.connectionState.set('connected');
+      this.reconnected$.next();
+    });
     this.connection.onclose(() => this.connectionState.set('disconnected'));
 
     this.connectionState.set('connecting');
@@ -123,6 +131,7 @@ export class RealtimeService implements OnDestroy {
     this.typingStopped$.complete();
     this.reactionAdded$.complete();
     this.channelAccessRevoked$.complete();
+    this.reconnected$.complete();
   }
 
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;

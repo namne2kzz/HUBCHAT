@@ -45,7 +45,7 @@ public sealed class UserMentionedConsumerTests
         var messageId = Guid.NewGuid();
         var author    = Guid.NewGuid();
 
-        await harness.Bus.Publish(new UserMentioned(mentioned, channelId, messageId, author));
+        await harness.Bus.Publish(new UserMentioned(mentioned, channelId, messageId, author, "hey @you"));
 
         (await harness.Consumed.Any<UserMentioned>()).ShouldBeTrue();
 
@@ -56,7 +56,8 @@ public sealed class UserMentionedConsumerTests
                 c.UserId    == mentioned &&
                 c.ChannelId == channelId &&
                 c.MessageId == messageId &&
-                c.ByUserId  == author),
+                c.ByUserId  == author &&
+                c.Preview   == "hey @you"),
             Arg.Any<CancellationToken>());
 
         await harness.Stop();
@@ -69,7 +70,7 @@ public sealed class UserMentionedConsumerTests
         // handler: the guard has to survive the path the broker actually takes.
         await using var lease = await NotificationDbContextFactory.CreateAsync();
 
-        var handler = new CreateMentionNotificationHandler(lease.Context, new RecordingEmailSender());
+        var handler = new CreateMentionNotificationHandler(lease.Context, new RecordingPublisher());
 
         var mentioned = Guid.NewGuid();
         var messageId = Guid.NewGuid();
@@ -84,14 +85,14 @@ public sealed class UserMentionedConsumerTests
     }
 
     [Fact]
-    public async Task ARedeliveredEventDoesNotSendASecondEmail()
+    public async Task ADuplicateIsNotAnnouncedTwice()
     {
-        // The email is fired after the duplicate check, so an idempotency guard that only skipped the row
-        // would still email the person twice. That is the visible half of the failure.
+        // NotificationCreated drives the email and the realtime push. A duplicate that only skipped the row
+        // but still published would email and push the person twice  14 the visible half of the failure.
         await using var lease = await NotificationDbContextFactory.CreateAsync();
 
-        var email   = new RecordingEmailSender();
-        var handler = new CreateMentionNotificationHandler(lease.Context, email);
+        var events  = new RecordingPublisher();
+        var handler = new CreateMentionNotificationHandler(lease.Context, events);
 
         var command = new CreateMentionNotificationCommand(
             Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "hello");
@@ -99,7 +100,10 @@ public sealed class UserMentionedConsumerTests
         await handler.Handle(command, CancellationToken.None);
         await handler.Handle(command, CancellationToken.None);
 
-        email.SendCount.ShouldBe(1);
+        var announced = events.Published.OfType<NotificationCreated>().ShouldHaveSingleItem();
+        announced.UserId.ShouldBe(command.UserId);
+        announced.Preview.ShouldBe("hello");
+        announced.Type.ShouldBe((int)NotificationType.Mention);
     }
 
     [Fact]
@@ -109,7 +113,7 @@ public sealed class UserMentionedConsumerTests
         // happened to be processed first.
         await using var lease = await NotificationDbContextFactory.CreateAsync();
 
-        var handler   = new CreateMentionNotificationHandler(lease.Context, new RecordingEmailSender());
+        var handler   = new CreateMentionNotificationHandler(lease.Context, new RecordingPublisher());
         var messageId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
         var author    = Guid.NewGuid();
@@ -129,7 +133,7 @@ public sealed class UserMentionedConsumerTests
         // The other direction: keying on the user alone would silence every mention after the first.
         await using var lease = await NotificationDbContextFactory.CreateAsync();
 
-        var handler = new CreateMentionNotificationHandler(lease.Context, new RecordingEmailSender());
+        var handler = new CreateMentionNotificationHandler(lease.Context, new RecordingPublisher());
         var user    = Guid.NewGuid();
 
         await handler.Handle(new CreateMentionNotificationCommand(
@@ -146,7 +150,7 @@ public sealed class UserMentionedConsumerTests
     {
         await using var lease = await NotificationDbContextFactory.CreateAsync();
 
-        var handler   = new CreateMentionNotificationHandler(lease.Context, new RecordingEmailSender());
+        var handler   = new CreateMentionNotificationHandler(lease.Context, new RecordingPublisher());
         var user      = Guid.NewGuid();
         var messageId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
@@ -166,16 +170,16 @@ public sealed class UserMentionedConsumerTests
         stored.IsRead.ShouldBeFalse();
     }
 
-    /// <summary>Counts the emails a handler tried to send.</summary>
-    private sealed class RecordingEmailSender : HUB.Notification.Application.Common.Interfaces.IEmailSender
+    /// <summary>Records published integration events.</summary>
+    private sealed class RecordingPublisher : HUB.Notification.Application.Common.Interfaces.IIntegrationEventPublisher
     {
-        /// <summary>How many sends were attempted.</summary>
-        public int SendCount { get; private set; }
+        /// <summary>Events published so far.</summary>
+        public List<HUB.Shared.Contracts.IntegrationEvent> Published { get; } = [];
 
         /// <inheritdoc />
-        public Task SendAsync(Guid userId, string subject, string body, CancellationToken ct)
+        public Task PublishAsync<TEvent>(TEvent @event, CancellationToken ct) where TEvent : HUB.Shared.Contracts.IntegrationEvent
         {
-            SendCount++;
+            Published.Add(@event);
             return Task.CompletedTask;
         }
     }

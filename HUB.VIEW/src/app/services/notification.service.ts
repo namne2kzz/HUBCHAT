@@ -59,8 +59,13 @@ export class NotificationService {
     this.notifications.update(ns => ns.map(n => ({ ...n, isRead: true })));
   }
 
-  /** Prepends a realtime notification and bumps unread count. @param notification Received notification. */
+  /**
+   * Prepends a realtime notification and bumps unread count — once. A broker redelivery pushes the same
+   * notification again; counting it twice would leave a badge the user can never clear by reading.
+   * @param notification Received notification.
+   */
   onRealtimeReceived(notification: NotificationDto): void {
+    if (this.notifications().some(n => n.id === notification.id)) return;
     this.notifications.update(ns => [notification, ...ns]);
     if (!notification.isRead) this.unreadCount.update(c => c + 1);
   }

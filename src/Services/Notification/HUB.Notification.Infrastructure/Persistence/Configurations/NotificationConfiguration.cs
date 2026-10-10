@@ -18,7 +18,11 @@ public sealed class NotificationConfiguration : IEntityTypeConfiguration<UserNot
         // Hot path: unread list per user.
         builder.HasIndex(n => new { n.UserId, n.CreatedAt });
         builder.HasIndex(n => new { n.UserId, n.IsRead });
-        // Idempotency lookup for consumer dedup.
-        builder.HasIndex(n => new { n.UserId, n.SourceId, n.Type });
+        // One notification per (recipient, source, kind). The inbox stops redelivery of the same message;
+        // this unique index is the last guard against two different messages for the same mention racing.
+        // Filtered: SourceId is optional (system notifications), and NULLs must never collide.
+        builder.HasIndex(n => new { n.UserId, n.SourceId, n.Type })
+            .IsUnique()
+            .HasFilter("\"SourceId\" IS NOT NULL");
     }
 }

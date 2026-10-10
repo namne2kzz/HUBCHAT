@@ -49,11 +49,14 @@ public sealed class PostMessageHandler(IChatDbContext db, IIntegrationEventPubli
 
         // Publish through the outbox — stored in the same transaction, delivered after SaveChanges.
         await events.PublishAsync(
-            new MessageSent(message.Id, channel.Id, message.AuthorId, Preview(message.Body), message.Mentions.ToList()),
+            new MessageSent(
+                message.Id, channel.Id, message.AuthorId, Preview(message.Body), message.Mentions.ToList(),
+                Body: message.Body, Format: (int)message.Format, ParentId: message.ParentId, CreatedAt: message.CreatedAt),
             ct);
 
         foreach (var mentioned in message.Mentions)
-            await events.PublishAsync(new UserMentioned(mentioned, channel.Id, message.Id, message.AuthorId), ct);
+            await events.PublishAsync(
+                new UserMentioned(mentioned, channel.Id, message.Id, message.AuthorId, Preview(message.Body)), ct);
 
         try
         {
