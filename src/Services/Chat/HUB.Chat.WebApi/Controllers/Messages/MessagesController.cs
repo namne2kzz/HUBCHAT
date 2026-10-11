@@ -1,6 +1,9 @@
 using HUB.Chat.Application.Common.Models;
 using HUB.Chat.Application.Messages.Commands.AddReaction;
 using HUB.Chat.Application.Messages.Commands.PostMessage;
+using HUB.Chat.Application.Messages.Commands.DeleteMessage;
+using HUB.Chat.Application.Messages.Commands.EditMessage;
+using HUB.Chat.Application.Messages.Commands.RemoveReaction;
 using HUB.Chat.Application.Messages.DTOs;
 using HUB.Chat.Application.Messages.Queries.ListMessages;
 using HUB.Chat.Application.Messages.Queries.ListMessagesAfter;
@@ -68,6 +71,34 @@ public sealed class MessagesController(ISender mediator, ICurrentUser currentUse
         return Ok(result);
     }
 
+    /// <summary>Edits the caller's own message (author only, within the edit window).</summary>
+    /// <param name="messageId">Message id.</param>
+    /// <param name="request">New body.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>200 with the edited message; 403 if not the author; 409 if too old or deleted.</returns>
+    [HttpPatch("messages/{messageId:guid}")]
+    [ProducesResponseType<MessageDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Edit(Guid messageId, [FromBody] EditMessageRequest request, CancellationToken ct)
+    {
+        var dto = await mediator.Send(new EditMessageCommand(messageId, request.Body, currentUser.Id), ct);
+        return Ok(dto);
+    }
+
+    /// <summary>Deletes a message — author (within the window) or a channel moderator. Idempotent.</summary>
+    /// <param name="messageId">Message id.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>204 on success; 403 if not allowed.</returns>
+    [HttpDelete("messages/{messageId:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Delete(Guid messageId, CancellationToken ct)
+    {
+        await mediator.Send(new DeleteMessageCommand(messageId, currentUser.Id), ct);
+        return NoContent();
+    }
+
     /// <summary>Adds an emoji reaction to a message.</summary>
     /// <param name="messageId">Message id.</param>
     /// <param name="request">Reaction emoji.</param>
@@ -78,6 +109,19 @@ public sealed class MessagesController(ISender mediator, ICurrentUser currentUse
     public async Task<IActionResult> React(Guid messageId, [FromBody] AddReactionRequest request, CancellationToken ct)
     {
         await mediator.Send(new AddReactionCommand(messageId, request.Emoji, currentUser.Id), ct);
+        return NoContent();
+    }
+
+    /// <summary>Removes the caller's own emoji reaction from a message (idempotent).</summary>
+    /// <param name="messageId">Message id.</param>
+    /// <param name="emoji">Emoji to remove — a query parameter, since emoji do not travel well as path segments.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>204 whether or not the reaction existed.</returns>
+    [HttpDelete("messages/{messageId:guid}/reactions")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Unreact(Guid messageId, [FromQuery] string emoji, CancellationToken ct)
+    {
+        await mediator.Send(new RemoveReactionCommand(messageId, emoji, currentUser.Id), ct);
         return NoContent();
     }
 }

@@ -192,4 +192,44 @@ describe('renderMarkdown', () => {
       expect(html).toContain('text');
     });
   });
+  describe('@mentions', () => {
+    const nam = { name: 'Nam Huynh', self: false };
+
+    it('highlights the @name of a mentioned user', () => {
+      expect(renderMarkdown('hi @Nam Huynh!', [nam])).toBe('hi <span class="md-mention">@Nam Huynh</span>!');
+    });
+
+    it('marks a mention of the current user more prominently', () => {
+      expect(renderMarkdown('@Nam Huynh look', [{ ...nam, self: true }]))
+        .toContain('<span class="md-mention md-mention-me">@Nam Huynh</span>');
+    });
+
+    it('leaves @text that is not a real mention plain', () => {
+      // Typing "@everyone" without picking anyone must not look like a mention.
+      expect(renderMarkdown('@everyone @Nam Huynh', [nam])).toBe('@everyone <span class="md-mention">@Nam Huynh</span>');
+    });
+
+    it('prefers the longer name so "@Nam" does not split "@Nam Huynh"', () => {
+      const html = renderMarkdown('@Nam Huynh and @Nam', [{ name: 'Nam', self: false }, nam]);
+      expect(html).toBe('<span class="md-mention">@Nam Huynh</span> and <span class="md-mention">@Nam</span>');
+    });
+
+    it('requires the name to end at a word boundary', () => {
+      expect(renderMarkdown('@Namx', [{ name: 'Nam', self: false }])).toBe('@Namx');
+    });
+
+    it('does not highlight inside inline code or code blocks', () => {
+      expect(renderMarkdown('`@Nam Huynh`', [nam])).toBe('<code class="md-inline">@Nam Huynh</code>');
+      expect(renderMarkdown('```\n@Nam Huynh\n```', [nam])).not.toContain('md-mention');
+    });
+
+    it('still escapes a hostile display name', () => {
+      const html = renderMarkdown('@<b>x</b>', [{ name: '<b>x</b>', self: false }]);
+      expect(html).toBe('<span class="md-mention">@&lt;b&gt;x&lt;/b&gt;</span>');
+    });
+
+    it('survives emphasis around the mention', () => {
+      expect(renderMarkdown('**@Nam Huynh**', [nam])).toBe('<strong><span class="md-mention">@Nam Huynh</span></strong>');
+    });
+  });
 });

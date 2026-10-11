@@ -37,7 +37,7 @@ public sealed class ListMessagesAfterHandler(IChatDbContext db) : IRequestHandle
         var messages = await db.Messages.AsNoTracking()
             .Include(m => m.Reactions)
             .Include(m => m.Attachments)
-            .Where(m => m.ChannelId == request.ChannelId && m.ParentId == null && m.DeletedAt == null)
+            .Where(m => m.ChannelId == request.ChannelId && m.ParentId == null)
             .Where(m => m.CreatedAt > anchor.CreatedAt
                      || (m.CreatedAt == anchor.CreatedAt && m.Id > anchor.Id))
             .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)

@@ -166,7 +166,7 @@ public sealed class ListMessagesHandlerTests
     }
 
     [Fact]
-    public async Task SoftDeletedMessagesAreExcluded()
+    public async Task SoftDeletedMessagesStayAsTombstones()
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();
         var member  = Guid.NewGuid();
@@ -180,8 +180,12 @@ public sealed class ListMessagesHandlerTests
         var page    = await handler.Handle(
             new ListMessagesQuery(channel.Id, member, null, 20), CancellationToken.None);
 
-        page.Items.Count.ShouldBe(2);
-        page.Items.ShouldNotContain(m => m.Id == victim.Id);
+        // A deleted message keeps its slot as a tombstone (to preserve order and threads), but carries no
+        // content — the body is blanked and IsDeleted is set.
+        page.Items.Count.ShouldBe(3);
+        var tombstone = page.Items.Single(m => m.Id == victim.Id);
+        tombstone.IsDeleted.ShouldBeTrue();
+        tombstone.Body.ShouldBeEmpty();
     }
 
     [Fact]

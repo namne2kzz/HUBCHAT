@@ -242,3 +242,49 @@ public sealed class MessageSentConsumerTests
         return context;
     }
 }
+
+/// <summary>Covers the edit and delete realtime consumers: the right client event on the message's channel group.</summary>
+public sealed class MessageEditDeleteConsumerTests
+{
+    private static (IHubContext<ChatHub> Hub, IHubClients Clients, IClientProxy Group) Wire()
+    {
+        var clients = Substitute.For<IHubClients>();
+        var group   = Substitute.For<IClientProxy>();
+        var hub     = Substitute.For<IHubContext<ChatHub>>();
+        hub.Clients.Returns(clients);
+        clients.Group(Arg.Any<string>()).Returns(group);
+        return (hub, clients, group);
+    }
+
+    private static ConsumeContext<T> Ctx<T>(T msg) where T : class
+    {
+        var c = Substitute.For<ConsumeContext<T>>();
+        c.Message.Returns(msg);
+        c.CancellationToken.Returns(CancellationToken.None);
+        return c;
+    }
+
+    [Fact]
+    public async Task EditIsPushedToTheChannelGroup()
+    {
+        var (hub, clients, group) = Wire();
+        var channelId = Guid.NewGuid();
+
+        await new MessageEditedConsumer(hub).Consume(Ctx(new MessageEdited(Guid.NewGuid(), channelId, "new body", DateTime.UtcNow)));
+
+        clients.Received().Group($"channel:{channelId}");
+        await group.Received().SendCoreAsync("messageEdited", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DeleteIsPushedToTheChannelGroup()
+    {
+        var (hub, clients, group) = Wire();
+        var channelId = Guid.NewGuid();
+
+        await new MessageDeletedConsumer(hub).Consume(Ctx(new MessageDeleted(Guid.NewGuid(), channelId)));
+
+        clients.Received().Group($"channel:{channelId}");
+        await group.Received().SendCoreAsync("messageDeleted", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+    }
+}

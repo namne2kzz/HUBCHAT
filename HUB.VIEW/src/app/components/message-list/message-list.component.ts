@@ -2,10 +2,12 @@ import {
   ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener,
   inject, input, output, signal, untracked,
 } from '@angular/core';
-import { DatePipe, DOCUMENT } from '@angular/common';
-import { MessageDto } from '../../models/message.model';
+import { DatePipe, DOCUMENT, NgTemplateOutlet } from '@angular/common';
+import { MessageDto, ReactionGroup, ReactionToggle } from '../../models/message.model';
+import { MESSAGE_EDIT_WINDOW_MS } from '../../utils/message-edit.util';
 import { DirectoryUser } from '../../models/directory.model';
-import { renderMarkdown } from '../../utils/markdown.util';
+import { MentionLabel, renderMarkdown } from '../../utils/markdown.util';
+import { groupReactions } from '../../utils/reaction.util';
 
 interface MessageRow {
   msg: MessageDto;
@@ -17,6 +19,16 @@ interface MessageRow {
   isContinued: boolean;
   /** Day-separator label (e.g. "Today") shown above this row when the date changes; null otherwise. */
   dateLabel: string | null;
+  /** True when someone else's message @mentions the current user — the bubble is tinted. */
+  mentionsMe: boolean;
+  /** Reactions grouped one chip per emoji, marking the ones the viewer added. */
+  reactions: ReactionGroup[];
+  /** True when the message is a deletion tombstone. */
+  isDeleted: boolean;
+  /** True when the viewer may edit it (author, within the window, not deleted). */
+  canEdit: boolean;
+  /** True when the viewer may delete it (author within window, or a moderator). */
+  canDelete: boolean;
   /** Message body rendered from Markdown to safe HTML. */
   html: string;
 }
@@ -29,7 +41,7 @@ interface MessageRow {
 @Component({
   selector: 'app-message-list',
   standalone: true,
-  imports: [DatePipe],
+  imports: [DatePipe, NgTemplateOutlet],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -99,8 +111,85 @@ export class MessageListComponent {
    */
   readonly highlightedId = input<string | null>(null);
 
+  /** Whether the viewer may react (channel members only — the API refuses non-members). */
+  readonly canReact = input<boolean>(false);
+  /** Whether the viewer may moderate (delete anyone's message) — Owner/Admin or ManageChannels. */
+  readonly canModerate = input<boolean>(false);
+
   /** Emits when older messages are requested. */
   readonly loadMore = output<void>();
+  /** Emits when the viewer toggles a reaction (adds it, or removes it when they already have it). */
+  readonly toggleReaction = output<ReactionToggle>();
+  /** Emits the message id + new body when the viewer saves an edit. */
+  readonly editMessage = output<{ messageId: string; body: string }>();
+  /** Emits the message id when the viewer deletes a message. */
+  readonly deleteMessage = output<string>();
+
+  /** Id of the message being edited inline; null when none. */
+  protected readonly editingId = signal<string | null>(null);
+  /** Working copy of the body while editing. */
+  protected readonly editDraft = signal('');
+
+  /** Emoji offered in the quick picker. */
+  protected readonly quickEmojis = ['👍', '❤️', '😂', '🎉', '😮', '😢', '👀', '✅'] as const;
+  /** Message id whose emoji picker is open; null when closed. */
+  protected readonly pickerFor = signal<string | null>(null);
+
+  /**
+   * Toggles the viewer's reaction and closes the picker.
+   * @param messageId Message reacted to.
+   * @param emoji Emoji clicked.
+   */
+  protected toggle(messageId: string, emoji: string): void {
+    if (!this.canReact()) return;
+    this.toggleReaction.emit({ messageId, emoji });
+    this.pickerFor.set(null);
+  }
+
+  /** Opens or closes the emoji picker for a message. @param messageId Message id. */
+  protected togglePicker(messageId: string): void {
+    this.pickerFor.update(id => (id === messageId ? null : messageId));
+  }
+
+  /** Opens inline edit for a message, seeding the draft with its current body. @param row The row. */
+  protected startEdit(row: MessageRow): void {
+    this.editingId.set(row.msg.id);
+    this.editDraft.set(row.msg.body);
+  }
+
+  /** Cancels inline edit without saving. */
+  protected cancelEdit(): void {
+    this.editingId.set(null);
+    this.editDraft.set('');
+  }
+
+  /** Emits the edit when the draft is non-empty and changed; closes edit mode. @param row The row. */
+  protected saveEdit(row: MessageRow): void {
+    const body = this.editDraft().trim();
+    if (body && body !== row.msg.body) this.editMessage.emit({ messageId: row.msg.id, body });
+    this.cancelEdit();
+  }
+
+  /** Keeps the edit draft in sync with the textarea. @param e Input event. */
+  protected onEditInput(e: Event): void {
+    this.editDraft.set((e.target as HTMLTextAreaElement).value);
+  }
+
+  /** Enter saves, Shift+Enter is a newline, Escape cancels. @param e Key event. @param row The row. */
+  protected onEditKeydown(e: KeyboardEvent, row: MessageRow): void {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.saveEdit(row); }
+    else if (e.key === 'Escape') { e.preventDefault(); this.cancelEdit(); }
+  }
+
+  /** Confirms then emits a delete. @param messageId Message id. */
+  protected confirmDelete(messageId: string): void {
+    if (this.document.defaultView?.confirm('Delete this message?')) this.deleteMessage.emit(messageId);
+  }
+
+  /** Tooltip listing who reacted, e.g. "Alice, Bob". @param g Reaction group. */
+  protected reactorNames(g: ReactionGroup): string {
+    return g.userIds.map(id => this.authors()[id]?.name ?? 'Someone').join(', ');
+  }
 
   /** Computed rows with grouping metadata. */
   readonly rows = computed<MessageRow[]>(() => {
@@ -122,7 +211,16 @@ export class MessageListComponent {
       const sameDay   = prev && new Date(prev.createdAt).toDateString() === new Date(msg.createdAt).toDateString();
       const dateLabel = sameDay ? null : this.dayLabel(msg.createdAt);
 
-      return { msg, showHeader, isOwn: msg.authorId === me, isContinued, dateLabel, html: renderMarkdown(msg.body) };
+      const isOwn      = msg.authorId === me;
+      const mentionsMe = !isOwn && !!me && (msg.mentions ?? []).includes(me);
+      const reactions  = groupReactions(msg.reactions, me);
+      const isDeleted  = !!msg.isDeleted;
+      // Mirror the server: author may edit/delete within 24h; a moderator may delete anything, anytime.
+      const inWindow   = Date.now() - new Date(msg.createdAt).getTime() <= MESSAGE_EDIT_WINDOW_MS;
+      const canEdit    = !isDeleted && isOwn && inWindow;
+      const canDelete  = !isDeleted && ((isOwn && inWindow) || this.canModerate());
+      const html       = isDeleted ? '' : renderMarkdown(msg.body, this.mentionLabels(msg));
+      return { msg, showHeader, isOwn, isContinued, dateLabel, mentionsMe, reactions, isDeleted, canEdit, canDelete, html };
     });
   });
 
@@ -134,6 +232,20 @@ export class MessageListComponent {
     if (d.toDateString() === today.toDateString()) return 'Today';
     if (d.toDateString() === yest.toDateString())  return 'Yesterday';
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  /**
+   * Names to highlight as @mentions in a message — only users the message really mentions, and only once
+   * their names are resolved (the page resolves mentioned ids alongside authors).
+   * @param msg The message.
+   * @returns Labels for renderMarkdown.
+   */
+  private mentionLabels(msg: MessageDto): MentionLabel[] {
+    const me = this.currentUserId();
+    const users = this.authors();
+    return (msg.mentions ?? [])
+      .map(id => ({ name: users[id]?.name ?? '', self: id === me }))
+      .filter(m => m.name);
   }
 
   /** Display name for an author id. @param authorId Author id. */

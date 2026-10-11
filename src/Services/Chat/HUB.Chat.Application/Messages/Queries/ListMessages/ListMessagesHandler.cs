@@ -24,7 +24,7 @@ public sealed class ListMessagesHandler(IChatDbContext db) : IRequestHandler<Lis
         var query = db.Messages.AsNoTracking()
             .Include(m => m.Reactions)
             .Include(m => m.Attachments)
-            .Where(m => m.ChannelId == request.ChannelId && m.ParentId == null && m.DeletedAt == null);
+            .Where(m => m.ChannelId == request.ChannelId && m.ParentId == null);
 
         // Keyset seek: fetch rows strictly older than the cursor, ordered by (CreatedAt desc, Id desc).
         // The Id tie-breaker has to appear here as well as in the ORDER BY — comparing CreatedAt alone

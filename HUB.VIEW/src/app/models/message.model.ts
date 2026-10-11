@@ -45,6 +45,8 @@ export interface MessageDto {
   attachments: AttachmentDto[];
   editedAt: string | null;
   createdAt: string;
+  /** True when the message is a deletion tombstone — render "message deleted"; body is empty. */
+  isDeleted?: boolean;
 }
 
 /** POST /api/v1/channels/{channelId}/messages body. */
@@ -84,6 +86,7 @@ export interface MessageReceivedEvent {
 
 export interface MessageEditedEvent {
   messageId: string;
+  channelId: string;
   newBody: string;
   editedAt: string;
 }
@@ -104,5 +107,25 @@ export interface ReactionAddedEvent {
   messageId: string;
   channelId: string;
   userId: string;
+  emoji: string;
+}
+
+/** Pushed by realtime-service (ReactionRemovedConsumer) when someone removes their reaction. */
+export type ReactionRemovedEvent = ReactionAddedEvent;
+
+/** Reactions on a message grouped by emoji, for display as one chip per emoji. */
+export interface ReactionGroup {
+  emoji: string;
+  /** How many users reacted with this emoji. */
+  count: number;
+  /** True when the current user is one of them — the chip shows as selected and a click removes it. */
+  mine: boolean;
+  /** Who reacted, in reaction order (for the tooltip). */
+  userIds: string[];
+}
+
+/** Emitted by the message list when the viewer clicks a reaction chip or picks an emoji. */
+export interface ReactionToggle {
+  messageId: string;
   emoji: string;
 }

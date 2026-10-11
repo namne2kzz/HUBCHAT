@@ -730,9 +730,29 @@ body {
 .bubble strong { font-weight: 700; }
 .bubble em { font-style: italic; }
 
+/* @mentions — only users the message really mentions (renderMarkdown gets their names). */
+.bubble .md-mention {
+  padding: 0 3px;
+  border-radius: 4px;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+/* Mentioning YOU stands out more, as in Slack. */
+.bubble .md-mention-me {
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+/* A message from someone else that mentions you: tinted bubble + accent edge. */
+.bubble-them.bubble-mentions-me {
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--accent-soft);
+}
+
 /* Own (accent) bubbles: lighter code/inline backgrounds for contrast. */
 .bubble-me .md-code { background: rgba(0, 0, 0, 0.18); }
 .bubble-me .md-inline { background: rgba(255, 255, 255, 0.18); }
+.bubble-me .md-mention { color: inherit; background: rgba(255, 255, 255, 0.22); }
 
 /* ── Theme utilities ────────────────────────────────────────────────────────
    Small token-driven helpers so templates never need a hardcoded colour class

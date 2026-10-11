@@ -245,4 +245,16 @@ describe('ChannelService', () => {
       TestBed.inject(HttpTestingController).verify();
     });
   });
+
+  describe('markRead', () => {
+    it('posts the read point (a message timestamp) to the channel', () => {
+      service.markRead('c1', '2026-10-10T09:00:00.000Z').subscribe();
+
+      // The message's server time, not the browser clock — the server compares it with message CreatedAt.
+      const req = http.expectOne(`${CHANNELS}/c1/read`);
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({ readAt: '2026-10-10T09:00:00.000Z' });
+      req.flush(null);
+    });
+  });
 });

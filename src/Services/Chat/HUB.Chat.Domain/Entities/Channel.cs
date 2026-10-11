@@ -102,6 +102,20 @@ public sealed class Channel : AggregateRoot
     /// <param name="userId">User id.</param>
     public bool HasMember(Guid userId) => _members.Any(m => m.UserId == userId);
 
+    /// <summary>Filters requested @mentions down to the users this channel may mention.</summary>
+    /// <param name="userIds">User ids the author mentioned.</param>
+    /// <returns>Distinct ids that may be mentioned: anyone in a public channel, members only otherwise.</returns>
+    /// <remarks>
+    /// A mention notifies the user with a preview of the message. In a private channel or DM, mentioning a
+    /// non-member would deliver that private content to someone who cannot read the channel — so they are
+    /// dropped. A public channel is readable by its workspace, so non-members may be mentioned there.
+    /// </remarks>
+    public IReadOnlyList<Guid> MentionableAmong(IEnumerable<Guid> userIds)
+    {
+        var distinct = userIds.Distinct();
+        return IsPrivate ? [.. distinct.Where(HasMember)] : [.. distinct];
+    }
+
     /// <summary>Ensures the channel can accept new messages.</summary>
     public void EnsureWritable()
     {

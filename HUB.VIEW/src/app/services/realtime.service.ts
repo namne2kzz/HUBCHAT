@@ -3,8 +3,8 @@ import * as signalR from '@microsoft/signalr';
 import { Subject } from 'rxjs';
 import { ConfigService } from '../core/services/config.service';
 import { AuthService } from './auth.service';
-import { MessageDeletedEvent, MessageEditedEvent, MessageReceivedEvent, ReactionAddedEvent, TypingEvent } from '../models/message.model';
-import { ChannelAccessRevokedEvent } from '../models/channel.model';
+import { MessageDeletedEvent, MessageEditedEvent, MessageReceivedEvent, ReactionAddedEvent, ReactionRemovedEvent, TypingEvent } from '../models/message.model';
+import { ChannelAccessRevokedEvent, ChannelReadEvent } from '../models/channel.model';
 import { NotificationReceivedEvent } from '../models/notification.model';
 import { PresenceChangedEvent } from '../models/presence.model';
 
@@ -30,8 +30,11 @@ export class RealtimeService implements OnDestroy {
   readonly typingStarted$        = new Subject<TypingEvent>();
   readonly typingStopped$        = new Subject<TypingEvent>();
   readonly reactionAdded$        = new Subject<ReactionAddedEvent>();
+  readonly reactionRemoved$      = new Subject<ReactionRemovedEvent>();
   /** This user lost access to a channel (kicked, removed by sprint sync, or left in another tab). */
   readonly channelAccessRevoked$ = new Subject<ChannelAccessRevokedEvent>();
+  /** The current user read a channel in another tab/device — clear its unread badge here too. */
+  readonly channelRead$ = new Subject<ChannelReadEvent>();
   /**
    * Emits after an automatic reconnect. Group memberships and anything pushed while disconnected are lost —
    * subscribers re-join what they need and fetch the gap (see channel-detail-page catch-up).
@@ -130,7 +133,9 @@ export class RealtimeService implements OnDestroy {
     this.typingStarted$.complete();
     this.typingStopped$.complete();
     this.reactionAdded$.complete();
+    this.reactionRemoved$.complete();
     this.channelAccessRevoked$.complete();
+    this.channelRead$.complete();
     this.reconnected$.complete();
   }
 
@@ -147,13 +152,15 @@ export class RealtimeService implements OnDestroy {
 
   private registerHandlers(): void {
     this.connection.on('MessageReceived',      (e: MessageReceivedEvent)      => this.messageReceived$.next(e));
-    this.connection.on('MessageEdited',        (e: MessageEditedEvent)        => this.messageEdited$.next(e));
-    this.connection.on('MessageDeleted',       (e: MessageDeletedEvent)       => this.messageDeleted$.next(e));
+    this.connection.on('messageEdited',        (e: MessageEditedEvent)        => this.messageEdited$.next(e));
+    this.connection.on('messageDeleted',       (e: MessageDeletedEvent)       => this.messageDeleted$.next(e));
     this.connection.on('NotificationReceived', (e: NotificationReceivedEvent) => this.notificationReceived$.next(e));
     this.connection.on('presenceChanged',      (e: PresenceChangedEvent)      => this.presenceChanged$.next(e));
     this.connection.on('typingStarted',        (e: TypingEvent)               => this.typingStarted$.next(e));
     this.connection.on('typingStopped',        (e: TypingEvent)               => this.typingStopped$.next(e));
     this.connection.on('reactionAdded',        (e: ReactionAddedEvent)        => this.reactionAdded$.next(e));
+    this.connection.on('reactionRemoved',      (e: ReactionRemovedEvent)      => this.reactionRemoved$.next(e));
     this.connection.on('channelAccessRevoked', (e: ChannelAccessRevokedEvent) => this.channelAccessRevoked$.next(e));
+    this.connection.on('channelRead',          (e: ChannelReadEvent)          => this.channelRead$.next(e));
   }
 }

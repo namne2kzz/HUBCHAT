@@ -10,6 +10,9 @@ namespace HUB.Chat.Application.Channels.Queries.ListChannels;
 /// <param name="db">Chat persistence context.</param>
 public sealed class ListChannelsHandler(IChatDbContext db) : IRequestHandler<ListChannelsQuery, IReadOnlyList<ChannelDto>>
 {
+    /// <summary>Unread counts stop at this — the badge shows "99+" anyway, and counting a huge backlog is wasted work.</summary>
+    public const int UnreadCap = 100;
+
     /// <summary>Returns visible channels ordered by name.</summary>
     /// <param name="request">The query.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -40,7 +43,17 @@ public sealed class ListChannelsHandler(IChatDbContext db) : IRequestHandler<Lis
                 // role has to be a subquery EF can translate. Without it the sidebar cannot tell a
                 // channel the user owns from one they merely joined.
                 MyRole: c.Members.Where(m => m.UserId == acting)
-                    .Select(m => (ChannelMemberRole?)m.Role).FirstOrDefault()))
+                    .Select(m => (ChannelMemberRole?)m.Role).FirstOrDefault(),
+                // Others' top-level messages after the caller's read point — or after they joined, if they
+                // never read (a newcomer should not see the whole history as unread). Non-members match no
+                // member row, so 0. Seeks the (ChannelId, CreatedAt) index; capped so a backlog stays cheap.
+                UnreadCount: db.Messages
+                    .Where(msg => msg.ChannelId == c.Id && msg.ParentId == null && msg.DeletedAt == null
+                               && msg.AuthorId != acting
+                               && c.Members.Any(m => m.UserId == acting
+                                    && msg.CreatedAt > (m.LastReadAt ?? m.JoinedAt)))
+                    .Take(UnreadCap)
+                    .Count()))
             .ToListAsync(ct);
     }
 }

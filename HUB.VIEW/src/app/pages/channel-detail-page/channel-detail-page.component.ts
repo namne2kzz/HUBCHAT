@@ -1,17 +1,17 @@
 import {
-  AfterViewInit, ChangeDetectionStrategy, Component, computed, DestroyRef, inject,
+  AfterViewInit, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject,
   Injector, OnDestroy, OnInit, signal, ViewChild,
 } from '@angular/core';
-import { distinctUntilChanged } from 'rxjs';
+import { debounceTime, distinctUntilChanged, of, Subject, switchMap } from 'rxjs';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { ChannelService } from '../../services/channel.service';
 import { MessageService } from '../../services/message.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { DirectoryService } from '../../services/directory.service';
 import { AuthService } from '../../services/auth.service';
-import { ChannelDto, ChannelType } from '../../models/channel.model';
-import { MessageDto } from '../../models/message.model';
-import { applyReaction } from '../../utils/reaction.util';
+import { ChannelDto, ChannelMemberRole, ChannelType } from '../../models/channel.model';
+import { MessageDto, ReactionToggle } from '../../models/message.model';
+import { applyReaction, removeReaction } from '../../utils/reaction.util';
 import { mergeMessages } from '../../utils/message-merge.util';
 import { messageFromRealtime } from '../../utils/realtime-message.util';
 import { DirectoryUser } from '../../models/directory.model';
@@ -19,7 +19,7 @@ import { MessageListComponent } from '../../components/message-list/message-list
 import { MessageInputComponent, ComposerSubmit } from '../../components/message-input/message-input.component';
 import { TypingIndicatorComponent } from '../../components/typing-indicator/typing-indicator.component';
 import { ChannelInfoPanelComponent } from '../../components/channel-info-panel/channel-info-panel.component';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DOCUMENT } from '@angular/common';
 
 @Component({
   selector: 'app-channel-detail-page',
@@ -39,6 +39,7 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   private readonly auth       = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector   = inject(Injector);
+  private readonly document   = inject(DOCUMENT);
 
   /** Reference to the message list child — used to call `scrollToMessage`. */
   @ViewChild(MessageListComponent) private messageListRef?: MessageListComponent;
@@ -46,6 +47,8 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   protected readonly channel      = signal<ChannelDto | null>(null);
   protected readonly messages     = signal<MessageDto[]>([]);
   protected readonly authors      = signal<Record<string, DirectoryUser>>({});
+  /** Channel members offered in the composer's @mention list. */
+  protected readonly mentionCandidates = signal<DirectoryUser[]>([]);
   protected readonly loading      = signal(true);
   protected readonly hasMore      = signal(false);
   /** Channel "…" info modal (About/Members). */
@@ -81,6 +84,15 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
    * the composer (mirrors the backend, which returns 403 on post/react for non-members).
    */
   protected readonly canPost = computed(() => this.channel()?.isMember ?? false);
+
+  /**
+   * Whether the viewer may moderate (delete anyone's message). Owner/Admin of the channel; the server also
+   * accepts a ManageChannels holder, but the sidebar only knows the channel role, so this is the visible subset.
+   */
+  protected readonly canModerate = computed(() => {
+    const r = this.channel()?.myRole;
+    return r === ChannelMemberRole.Owner || r === ChannelMemberRole.Admin;
+  });
   /** True while a join request is in flight (disables the Join button). */
   protected readonly joining = signal(false);
 
@@ -106,6 +118,7 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   ngOnInit(): void {
     // Subscribe to realtime ONCE — all filters read this.channelId at event time.
     this.subscribeRealtime();
+    this.subscribeReadTracking();
 
     // The open channel is app state (ChannelService.selectedId), not a URL param — the URL
     // stays /{orgAlias}/channels. React to selection changes to load the chosen channel.
@@ -131,12 +144,63 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     });
   }
 
+  /**
+   * Adds the viewer's reaction, or removes it when they already have that emoji. Optimistic: the chip
+   * changes at once and is rolled back if the API refuses. The realtime echo of this same change is a
+   * no-op (applyReaction/removeReaction ignore what is already there).
+   * @param t Message and emoji clicked.
+   */
+  protected onToggleReaction(t: ReactionToggle): void {
+    const me = this.currentUserId();
+    const msg = this.messages().find(m => m.id === t.messageId);
+    if (!me || !msg) return;
+
+    const had = msg.reactions.some(r => r.userId === me && r.emoji === t.emoji);
+    const apply  = (fn: typeof applyReaction) =>
+      this.messages.update(prev => prev.map(m => fn(m, t.messageId, me, t.emoji)));
+
+    apply(had ? removeReaction : applyReaction);
+    const call = had ? this.messageSvc.unreact(t.messageId, t.emoji) : this.messageSvc.react(t.messageId, t.emoji);
+    call.subscribe({ error: () => apply(had ? applyReaction : removeReaction) });
+  }
+
+  /**
+   * Edits a message after confirming the new body differs. Optimistic swap, rolled back if the server refuses
+   * (e.g. the edit window passed).
+   * @param e The message id and new body from the list.
+   */
+  protected onEditMessage(e: { messageId: string; body: string }): void {
+    const body = e.body.trim();
+    const current = this.messages().find(m => m.id === e.messageId);
+    if (!current || !body || body === current.body) return;
+
+    const prevBody = current.body;
+    this.messages.update(prev => prev.map(m => m.id === e.messageId ? { ...m, body, editedAt: new Date().toISOString() } : m));
+    this.messageSvc.edit(e.messageId, body).subscribe({
+      next: saved => this.messages.update(prev => prev.map(m => m.id === saved.id ? saved : m)),
+      error: () => this.messages.update(prev => prev.map(m => m.id === e.messageId ? { ...m, body: prevBody, editedAt: current.editedAt } : m)),
+    });
+  }
+
+  /**
+   * Deletes a message to a tombstone. Optimistic, rolled back on failure.
+   * @param messageId Message id.
+   */
+  protected onDeleteMessage(messageId: string): void {
+    const before = this.messages();
+    this.messages.update(prev => prev.map(m =>
+      m.id === messageId ? { ...m, isDeleted: true, body: '', reactions: [], attachments: [], editedAt: null } : m));
+    this.messageSvc.delete(messageId).subscribe({ error: () => this.messages.set(before) });
+  }
+
   /** Sends a composed message (Markdown). @param payload Composer output. */
   protected sendMessage(payload: ComposerSubmit): void {
     if (!payload.body.trim()) return;
     clearTimeout(this.typingTimer ?? undefined);
     this.realtime.stopTyping(this.channelId);
-    this.messageSvc.send(this.channelId, { body: payload.body, format: payload.format }).subscribe(msg => {
+    this.messageSvc.send(this.channelId, {
+      body: payload.body, format: payload.format, mentionedUserIds: payload.mentionedUserIds,
+    }).subscribe(msg => {
       this.messages.update(prev => mergeMessages(prev, [msg], 'replace'));
       this.resolveAuthors([msg]);
     });
@@ -284,6 +348,7 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   private resetState(): void {
     clearTimeout(this.typingTimer ?? undefined);
     this.messages.set([]);
+    this.mentionCandidates.set([]);
     this.channel.set(null);
     this.cursor = null;
     this.hasMore.set(false);
@@ -296,7 +361,27 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     this.channelId = id;
     this.loadChannel();
     this.loadMessages();
+    this.loadMentionCandidates();
     this.realtime.joinChannel(id);
+  }
+
+  /**
+   * Loads the channel's members as @mention suggestions (minus the current user). Members only: the server
+   * drops mentions of non-members in private channels, so offering them would promise a notification
+   * that never goes out.
+   */
+  private loadMentionCandidates(): void {
+    const channelId = this.channelId;
+    const me = this.auth.currentUser()?.id;
+    this.channelSvc.listMembers(channelId).pipe(
+      switchMap(members => {
+        const ids = members.map(m => m.userId).filter(id => id !== me);
+        return ids.length ? this.directory.getUsers(ids) : of([] as DirectoryUser[]);
+      }),
+    ).subscribe({
+      next: users => { if (channelId === this.channelId) this.mentionCandidates.set(users); },
+      error: () => { /* no suggestions — typing @ simply shows nothing */ },
+    });
   }
 
   private loadChannel(): void {
@@ -367,10 +452,50 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     this.loadMessages();
   }
 
+  /** Nudged whenever the newest visible message may have changed; debounced into one markRead call. */
+  private readonly readTrigger = new Subject<void>();
+
+  /** Last read point sent per channel, so an unchanged timeline does not re-post. */
+  private lastSentRead: Record<string, string> = {};
+
+  /**
+   * Persists the read point server-side so unread badges survive reloads and sync across devices.
+   * Debounced (a burst of messages = one call), only for members (the API refuses others), and only while
+   * the tab is visible — a background tab has not been "read".
+   */
+  private subscribeReadTracking(): void {
+    this.readTrigger.pipe(debounceTime(800), takeUntilDestroyed(this.destroyRef)).subscribe(() => this.markRead());
+
+    const onVisible = () => { if (this.document.visibilityState === 'visible') this.readTrigger.next(); };
+    this.document.addEventListener('visibilitychange', onVisible);
+    this.destroyRef.onDestroy(() => this.document.removeEventListener('visibilitychange', onVisible));
+
+    // Any change to the newest message (load, send, realtime, catch-up) is a reason to re-check.
+    effect(() => {
+      this.messages().at(-1)?.id;
+      this.canPost();
+      this.readTrigger.next();
+    }, { injector: this.injector });
+  }
+
+  /** Sends the newest message's time as the read point, if anything changed and the user can read it. */
+  private markRead(): void {
+    const channelId = this.channelId;
+    const newest    = this.messages().at(-1);
+    if (!channelId || !newest || !this.canPost() || this.document.visibilityState !== 'visible') return;
+    if (this.lastSentRead[channelId] === newest.createdAt) return;
+    this.lastSentRead[channelId] = newest.createdAt;
+    this.channelSvc.markRead(channelId, newest.createdAt).subscribe({
+      error: () => { delete this.lastSentRead[channelId]; }, // allow a retry on the next trigger
+    });
+  }
+
   /** Fetches display names for author ids not yet cached. @param msgs Messages to resolve. */
   private resolveAuthors(msgs: MessageDto[]): void {
     const known   = this.authors();
-    const missing = [...new Set(msgs.map(m => m.authorId))].filter(id => !known[id]);
+    // Mentioned users too, so their @name can be highlighted in the body.
+    const ids     = msgs.flatMap(m => [m.authorId, ...(m.mentions ?? [])]);
+    const missing = [...new Set(ids)].filter(id => !known[id]);
     if (!missing.length) return;
 
     // One request for the whole page's authors — a page with 15 distinct authors used to fire 15.
@@ -405,6 +530,7 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     this.realtime.messageEdited$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(e => {
+        if (e.channelId !== this.channelId) return;
         this.messages.update(prev =>
           prev.map(m => m.id === e.messageId ? { ...m, body: e.newBody, editedAt: e.editedAt } : m)
         );
@@ -413,8 +539,12 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     this.realtime.messageDeleted$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(e => {
-        if (e.channelId === this.channelId)
-          this.messages.update(prev => prev.filter(m => m.id !== e.messageId));
+        if (e.channelId !== this.channelId) return;
+        // Tombstone in place (keep the slot + thread) rather than removing the row.
+        this.messages.update(prev => prev.map(m =>
+          m.id === e.messageId
+            ? { ...m, isDeleted: true, body: '', reactions: [], attachments: [], editedAt: null }
+            : m));
       });
 
     this.realtime.reactionAdded$
@@ -422,6 +552,13 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
       .subscribe(e => {
         if (e.channelId !== this.channelId) return;
         this.messages.update(prev => prev.map(m => applyReaction(m, e.messageId, e.userId, e.emoji)));
+      });
+
+    this.realtime.reactionRemoved$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(e => {
+        if (e.channelId !== this.channelId) return;
+        this.messages.update(prev => prev.map(m => removeReaction(m, e.messageId, e.userId, e.emoji)));
       });
 
     this.realtime.channelAccessRevoked$

@@ -303,4 +303,12 @@ public sealed class MessageLifecycleTests
         // the same upload twice should collapse, this is the test that would change.
         message.Attachments.Count.ShouldBe(2);
     }
+
+    [Fact]
+    public void IsWithinAuthorWindow_TrueJustAfterPosting_FalseAfter24h()
+    {
+        var m = Message.Post(Guid.NewGuid(), Guid.NewGuid(), "hi");
+        m.IsWithinAuthorWindow(DateTime.UtcNow).ShouldBeTrue();
+        m.IsWithinAuthorWindow(DateTime.UtcNow.AddHours(25)).ShouldBeFalse();
+    }
 }

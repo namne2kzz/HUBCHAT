@@ -120,6 +120,17 @@ public sealed class ChannelRevokeAndReactionConsumerTests
     }
 
     [Fact]
+    public async Task AReactionRemovalIsPushedToItsChannelGroup()
+    {
+        var f = new Fixture();
+
+        await new ReactionRemovedConsumer(f.Hub).Consume(Context(new ReactionRemoved(Guid.NewGuid(), ChannelId, UserId, ":+1:")));
+
+        f.Clients.Received().Group($"channel:{ChannelId}");
+        await f.Proxy.Received().SendCoreAsync("reactionRemoved", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task BothConsumersAreWiredToTheirEvents()
     {
         // Real MassTransit dispatch: proves the consumers are registered for these message types at all.

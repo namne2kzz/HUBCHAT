@@ -4,6 +4,7 @@
 
 | Ngày | Giờ | Title | Thay đổi |
 |------|-----|-------|----------|
+| 2026-10-10 | — | Unread count lưu phía server + đồng bộ đa thiết bị | `ChannelDto.UnreadCount` (list kênh): tin top-level, chưa xoá, **của người khác**, sau `LastReadAt` (chưa đọc lần nào → sau `JoinedAt`), tối đa 100. `MarkRead` chặn `readAt` không vượt "now", chỉ lưu + phát `ChannelReadMarked` khi điểm đọc tiến lên → realtime `channelRead` tới các tab/thiết bị khác của chính user. HUB.VIEW: badge khởi tạo từ server; tự gọi mark-read (debounce 800ms) khi đang mở kênh, là member, tab đang hiển thị. |
 | 2026-10-04 | — | Thu hồi quyền realtime khi bị xoá / rời kênh (MP-4) | Remove member (manager, sprint sync) và Leave đều publish `ChannelMemberRemoved` (outbox). Realtime: xoá cache `canjoin`, gỡ **mọi connection** của user khỏi group kênh, gửi `channelAccessRevoked`. Trước đó người bị kick vẫn nhận message kênh private tới khi reconnect (+ cache allow 60s). FE: kênh private biến khỏi sidebar/đóng view; kênh public chuyển về trạng thái chưa join. |
 | 2026-10-04 | — | Phân quyền add/remove member (MP-3A, fix bảo mật) | `PUT/DELETE /channels/{id}/members/{userId}` trước đây **không kiểm tra quyền** — ai đăng nhập cũng tự thêm mình vào kênh private (đọc được hết) hoặc kick bất kỳ ai. Giờ chỉ Owner/Admin của kênh **hoặc** người có quyền workspace `ManageChannels` (đọc từ dashboard-gateway bằng chính JWT người gọi; lỗi/timeout → từ chối). Internal API (sprint sync, service token) giữ nguyên. |
 | 2026-08-01 | 20:18 | Khởi tạo document | Tạo doc business ban đầu cho feature Channel Members (P1) |
@@ -27,7 +28,7 @@ Quản lý thành viên trong 1 kênh và vai trò quản trị kênh.
 
 ## Main Workflows
 1. **Join**: caller tự thêm mình (`POST /channels/{id}/members`).
-2. **Mark read**: `POST /channels/{id}/read` → update `LastReadAt` phục vụ unread count.
+2. **Mark read**: `POST /channels/{id}/read` (`readAt` = createdAt của tin mới nhất đã thấy) → `LastReadAt` chỉ tiến, không lùi, không vượt "now"; tiến thì phát `ChannelReadMarked` → các phiên khác của user xoá badge. **Unread** = số tin top-level của người khác sau `LastReadAt` (hoặc sau `JoinedAt` nếu chưa đọc), tối đa 100, trả trong `ChannelDto.UnreadCount` của list kênh.
 3. **Add member** (`PUT /channels/{id}/members/{userId}`) / **Remove member** (`DELETE /channels/{id}/members/{userId}`): người quản lý thêm/xoá người khác (xem rule quyền). Tự rời kênh dùng `DELETE /channels/{id}/members/me`.
 
 ## Definition of Done

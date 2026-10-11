@@ -25,13 +25,26 @@ public static class ChannelMemberManagement
     public static async Task EnsureCanManageMembersAsync(
         Channel channel, Guid actingUserId, IWorkspacePermissions permissions, CancellationToken ct)
     {
+        if (!await CanModerateAsync(channel, actingUserId, permissions, ct))
+            throw new ForbiddenException("Only channel owners/admins or users with ManageChannels can manage members.");
+    }
+
+    /// <summary>
+    /// Whether the user may moderate the channel: its Owner/Admin, or a holder of
+    /// <see cref="WorkspacePermissionNames.ManageChannels"/> in its workspace.
+    /// </summary>
+    /// <param name="channel">Channel with its members loaded.</param>
+    /// <param name="actingUserId">The user to check.</param>
+    /// <param name="permissions">Caller workspace permissions (consulted only when the channel role is not enough).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>True when the user may moderate this channel.</returns>
+    public static async Task<bool> CanModerateAsync(
+        Channel channel, Guid actingUserId, IWorkspacePermissions permissions, CancellationToken ct)
+    {
         var role = channel.Members.FirstOrDefault(m => m.UserId == actingUserId)?.Role;
         if (role is ChannelMemberRole.Owner or ChannelMemberRole.Admin)
-            return;
+            return true;
 
-        if (await permissions.CallerHasPermissionAsync(channel.WorkspaceId, WorkspacePermissionNames.ManageChannels, ct))
-            return;
-
-        throw new ForbiddenException("Only channel owners/admins or users with ManageChannels can manage members.");
+        return await permissions.CallerHasPermissionAsync(channel.WorkspaceId, WorkspacePermissionNames.ManageChannels, ct);
     }
 }

@@ -42,7 +42,7 @@ public sealed class PostMessageHandler(IChatDbContext db, IIntegrationEventPubli
 
         var message = Message.Post(
             request.ChannelId, request.ActingUserId, request.Body, request.Format,
-            parentId: request.ParentId, mentions: request.MentionedUserIds,
+            parentId: request.ParentId, mentions: channel.MentionableAmong(request.MentionedUserIds),
             clientMessageId: request.ClientMessageId);
 
         db.Messages.Add(message);
@@ -54,7 +54,8 @@ public sealed class PostMessageHandler(IChatDbContext db, IIntegrationEventPubli
                 Body: message.Body, Format: (int)message.Format, ParentId: message.ParentId, CreatedAt: message.CreatedAt),
             ct);
 
-        foreach (var mentioned in message.Mentions)
+        // Self-mentions stay on the message but never notify the author.
+        foreach (var mentioned in message.Mentions.Where(id => id != message.AuthorId))
             await events.PublishAsync(
                 new UserMentioned(mentioned, channel.Id, message.Id, message.AuthorId, Preview(message.Body)), ct);
 

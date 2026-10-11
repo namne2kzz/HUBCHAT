@@ -213,3 +213,141 @@
    <strong>/<em>/<a> tags) live in GLOBAL styles.css, NOT here. That content is injected via
    [innerHTML], so it never receives this component's view-encapsulation attribute — scoped rules
    would silently not match (which is why code blocks did not scroll). Keep them global. */
+
+/* ── Reactions ─────────────────────────────────────────────────────────────── */
+.bub-reactions { position: relative; align-items: center; }
+/* Only the hover add-button: take no space, so messages without reactions keep their spacing. */
+.bub-reactions-empty { height: 0; margin-top: 0; }
+
+.reaction-chip {
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.4;
+  transition: background 0.12s, border-color 0.12s;
+}
+.reaction-chip:hover:not(:disabled) { border-color: var(--accent-text); }
+.reaction-chip:disabled { cursor: default; }
+.reaction-chip-mine {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-color: var(--accent-text);
+}
+.reaction-emoji { font-size: 0.85rem; }
+.reaction-count { font-variant-numeric: tabular-nums; }
+
+.reaction-add-wrap {
+  position: relative;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.bub-reactions-empty .reaction-add-wrap { position: absolute; top: 2px; left: 0; }
+.bub-reactions-me.bub-reactions-empty .reaction-add-wrap { left: auto; right: 0; }
+/* Visible while hovering the message row, or while its picker is open. */
+.bubble-row:hover .reaction-add-wrap,
+.reaction-add-wrap.reaction-add-open { opacity: 1; }
+
+.reaction-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.reaction-add:hover { color: var(--accent-text); border-color: var(--accent-text); }
+
+.reaction-picker {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 15;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.18);
+}
+.bub-reactions-me .reaction-picker { left: auto; right: 0; }
+.reaction-pick {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 1.05rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+.reaction-pick:hover { background: var(--bg-hover); }
+
+/* ── Deleted tombstone ─────────────────────────────────────────────────────── */
+.bubble-deleted {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-style: italic;
+}
+.bubble-deleted .deleted-note { font-size: 0.82rem; }
+
+/* ── Edit / delete actions (hover) ─────────────────────────────────────────── */
+.msg-actions {
+  display: inline-flex;
+  gap: 2px;
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.msg-actions-me { justify-content: flex-end; }
+.bubble-row:hover .msg-actions { opacity: 1; }
+.msg-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.msg-action:hover { color: var(--accent-text); border-color: var(--accent-text); }
+.msg-action-danger:hover { color: var(--danger); border-color: var(--danger); }
+
+/* ── Inline edit box ───────────────────────────────────────────────────────── */
+.msg-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 100%;
+}
+.msg-edit-input {
+  width: 100%;
+  min-width: 220px;
+  resize: vertical;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--accent-text);
+  border-radius: 8px;
+}
+.msg-edit-actions { display: flex; gap: 6px; }
+.msg-edit-cancel,
+.msg-edit-save {
+  padding: 3px 12px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.msg-edit-cancel { color: var(--text-secondary); background: transparent; border: 1px solid var(--border); }
+.msg-edit-save   { color: var(--accent-contrast); background: var(--accent); border: 1px solid var(--accent); }
+.msg-edit-hint   { font-size: 0.7rem; color: var(--text-muted); }

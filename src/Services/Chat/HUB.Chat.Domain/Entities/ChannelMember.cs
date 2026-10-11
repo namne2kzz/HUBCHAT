@@ -36,9 +36,12 @@ public sealed class ChannelMember : Entity
 
     /// <summary>Marks the channel read up to <paramref name="readAt"/>.</summary>
     /// <param name="readAt">The point in time read up to (usually a message timestamp).</param>
-    public void MarkRead(DateTime readAt)
+    /// <returns>True when the read point moved forward; false when it was already at or past it (never moves back).</returns>
+    public bool MarkRead(DateTime readAt)
     {
-        if (LastReadAt is null || readAt > LastReadAt) LastReadAt = readAt;
+        if (LastReadAt is not null && readAt <= LastReadAt) return false;
+        LastReadAt = readAt;
+        return true;
     }
 
     /// <summary>Changes this member's role.</summary>

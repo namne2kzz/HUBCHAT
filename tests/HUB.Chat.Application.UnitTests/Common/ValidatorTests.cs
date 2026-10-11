@@ -93,6 +93,16 @@ public sealed class ValidatorTests
     private static PostMessageCommand ValidPost(string body = "hello") =>
         new(Guid.NewGuid(), body, MessageFormat.Markdown, null, [], Guid.NewGuid());
 
+    [Theory]
+    [InlineData(50, true)]
+    [InlineData(51, false)]
+    public void MentionsAreCappedAtFifty(int count, bool valid)
+    {
+        // Every mention becomes a notification and an email.
+        var command = ValidPost() with { MentionedUserIds = [.. Enumerable.Range(0, count).Select(_ => Guid.NewGuid())] };
+        new PostMessageValidator().Validate(command).IsValid.ShouldBe(valid);
+    }
+
     [Fact]
     public void AValidPostMessageCommandPasses()
     {

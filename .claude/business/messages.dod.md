@@ -4,6 +4,8 @@
 
 | Ngày | Giờ | Title | Thay đổi |
 |------|-----|-------|----------|
+| 2026-10-11 | — | Sửa / xoá tin (CF-4) | PATCH `/messages/{id}` (sửa, tác giả, trong 24h) → `MessageEdited`; DELETE `/messages/{id}` (tác giả trong 24h HOẶC Owner/Admin/ManageChannels, không giới hạn giờ) → `MessageDeleted`, soft-delete thành **tombstone**. List vẫn trả tin đã xoá nhưng body rỗng + `IsDeleted`; unread không tính tin đã xoá. Realtime push `messageEdited`/`messageDeleted` (sửa lại tên camelCase — trước PascalCase nên FE không nhận). UI: hover hiện nút sửa/xoá, sửa inline (Enter lưu/Esc huỷ), xoá có confirm, optimistic. |
+| 2026-10-10 | — | @mention từ UI + lọc mention phía server | Composer: gõ `@` → gợi ý thành viên kênh (↑/↓, Enter/Tab, Esc), gửi `mentionedUserIds` (chỉ người còn `@Tên` trong nội dung). Server: kênh private/DM chỉ giữ mention là **member** (chặn lộ preview nội dung kênh private qua notification); không báo khi tự mention; tối đa 50 mention/tin. |
 | 2026-10-08 | — | Realtime push message đầy đủ (MP-5B) | `MessageSent` mang thêm `Body`, `Format`, `ParentId`, `CreatedAt` (tuỳ chọn, cuối record — tương thích event cũ). Người nhận thấy đúng message (đủ độ dài, render markdown) ngay, không còn bản rút gọn 140 ký tự. Reply trong thread không còn lọt vào timeline chính qua realtime. |
 | 2026-10-08 | — | Catch-up sau reconnect + chống trùng phía client (MP-5) | Endpoint mới `GET /channels/{id}/messages/after/{messageId}?limit=` — message top-level mới hơn mốc, cũ→mới, keyset `(CreatedAt, Id)`; mốc không thuộc kênh → 404. HUB.VIEW: reconnect → join lại group **rồi** tải phần lỡ (tối đa 5 trang × 100, quá thì tải lại trang mới nhất); mọi đường thêm message gộp qua `mergeMessages` (dedupe theo id, bản đầy đủ thay bản preview realtime). |
 | 2026-10-04 | — | Idempotent send (MP-3) | `PostMessage` nhận `ClientMessageId` (UUID, tuỳ chọn). Cùng tác giả gửi lại cùng key → trả message gốc (201), **không** publish lại `MessageSent`/`UserMentioned`. Unique `(AuthorId, ClientMessageId)` lọc NULL. Cùng key ở kênh khác → 409. HUB.VIEW sinh key mỗi lần gửi và retry lỗi mạng/502/503/504 với cùng key. |
@@ -22,9 +24,9 @@ Tin nhắn trong kênh: top-level hoặc thread reply, hỗ trợ mention, edit,
 
 ## Business Rules & Invariants
 - Body bắt buộc (không rỗng) khi Post và Edit.
-- Mentions distinct.
-- Edit: chặn nếu đã xoá; set `EditedAt`. Chỉ tác giả được edit (enforce ở Application).
-- Soft-delete: set `DeletedAt`, idempotent; không hiển thị trong list.
+- Mentions distinct. **Ai được mention** (luật `Channel.MentionableAmong`): kênh public → bất kỳ ai; kênh private/DM/GroupDM → chỉ member (người ngoài bị bỏ khỏi mentions, không nhận notification — tránh lộ preview kênh private). Tự mention: vẫn lưu trên message nhưng không phát `UserMentioned`. Tối đa 50 mention/tin (validator).
+- **Edit**: chỉ **tác giả**, trong **24h** (`Message.AuthorEditWindow`), tin chưa xoá, body ≤ 8000. Moderator KHÔNG sửa hộ (sửa = đổi nội dung). Set `EditedAt`; phát `MessageEdited`.
+- **Soft-delete → tombstone**: tác giả (trong 24h) hoặc moderator kênh (Owner/Admin/ManageChannels, không giới hạn giờ). Giữ chỗ trong list (giữ thread) nhưng DTO xoá body/reactions/attachments + `IsDeleted=true`. Idempotent (xoá lại = no-op, không phát event lần 2). Phát `MessageDeleted`.
 - Post yêu cầu caller là **member** của kênh và kênh **writable** (chưa archive).
 - **Idempotent send**: `ClientMessageId` là khoá idempotency **theo tác giả** — `(AuthorId, ClientMessageId)` unique. Retry cùng key trả lại message gốc và không phát event lần 2; không gửi key (client cũ) thì không dedupe (gửi 2 lần cùng nội dung = 2 message). Key `Guid.Empty` bị từ chối. Cùng key nhưng khác kênh → từ chối (409), không trả message của kênh khác.
 

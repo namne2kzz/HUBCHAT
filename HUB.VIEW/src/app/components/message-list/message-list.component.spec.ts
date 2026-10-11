@@ -219,4 +219,171 @@ describe('MessageListComponent', () => {
       expect(rowsFor([])).toEqual([]);
     });
   });
+  describe('@mentions', () => {
+    beforeEach(() => {
+      fixture.componentRef.setInput('authors', { [ME]: user(ME, 'Me Myself'), [ALICE]: user(ALICE, 'Alice') });
+    });
+
+    it('highlights mentioned names using the resolved directory names', () => {
+      const [row] = rowsFor([msg(BOB, 0, { body: 'ping @Alice', mentions: [ALICE] })]);
+      expect(row.html).toBe('ping <span class="md-mention">@Alice</span>');
+      expect(row.mentionsMe).toBeFalse();
+    });
+
+    it('flags a message from someone else that mentions me', () => {
+      const [row] = rowsFor([msg(BOB, 0, { body: 'hey @Me Myself', mentions: [ME] })]);
+
+      expect(row.mentionsMe).toBeTrue();
+      expect(row.html).toContain('md-mention-me');
+      expect(fixture.nativeElement.querySelector('.bubble-mentions-me')).not.toBeNull();
+    });
+
+    it('does not flag my own message that mentions me', () => {
+      const [row] = rowsFor([msg(ME, 0, { body: '@Me Myself reminder', mentions: [ME] })]);
+      expect(row.mentionsMe).toBeFalse();
+    });
+
+    it('leaves a mention plain until the name is resolved', () => {
+      // No directory entry for BOB yet — no guessing a name to highlight.
+      const [row] = rowsFor([msg(ALICE, 0, { body: '@Bob hi', mentions: [BOB] })]);
+      expect(row.html).toBe('@Bob hi');
+    });
+  });
+
+  describe('reactions', () => {
+    const toggles: { messageId: string; emoji: string }[] = [];
+    const chips = () => Array.from(fixture.nativeElement.querySelectorAll('.reaction-chip')) as HTMLButtonElement[];
+
+    beforeEach(() => {
+      toggles.length = 0;
+      component.toggleReaction.subscribe(t => toggles.push(t));
+    });
+
+    it('shows one chip per emoji with its count and marks mine', () => {
+      fixture.componentRef.setInput('canReact', true);
+      rowsFor([msg(BOB, 0, { reactions: [
+        { emoji: '👍', userId: ALICE }, { emoji: '👍', userId: ME }, { emoji: '🎉', userId: BOB },
+      ] })]);
+
+      expect(chips().map(c => c.textContent?.replace(/\s+/g, ''))).toEqual(['👍2', '🎉1']);
+      expect(chips()[0].classList).toContain('reaction-chip-mine');
+      expect(chips()[1].classList).not.toContain('reaction-chip-mine');
+    });
+
+    it('clicking a chip asks to toggle that emoji', () => {
+      fixture.componentRef.setInput('canReact', true);
+      rowsFor([msg(BOB, 0, { reactions: [{ emoji: '👍', userId: ALICE }] })]);
+
+      chips()[0].click();
+
+      expect(toggles).toEqual([{ messageId: 'm-bob-0', emoji: '👍' }]);
+    });
+
+    it('the picker offers quick emoji and emits the one picked', () => {
+      fixture.componentRef.setInput('canReact', true);
+      rowsFor([msg(BOB, 0)]);
+
+      (fixture.nativeElement.querySelector('.reaction-add') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      const picks = fixture.nativeElement.querySelectorAll('.reaction-pick') as NodeListOf<HTMLButtonElement>;
+      expect(picks.length).toBeGreaterThan(0);
+
+      picks[0].click();
+      fixture.detectChanges();
+
+      expect(toggles).toEqual([{ messageId: 'm-bob-0', emoji: '👍' }]);
+      expect(fixture.nativeElement.querySelector('.reaction-picker')).toBeNull();
+    });
+
+    it('a non-member sees reactions but cannot click them or add one', () => {
+      fixture.componentRef.setInput('canReact', false);
+      rowsFor([msg(BOB, 0, { reactions: [{ emoji: '👍', userId: ALICE }] })]);
+
+      expect(chips()[0].disabled).toBeTrue();
+      expect(fixture.nativeElement.querySelector('.reaction-add')).toBeNull();
+    });
+  });
+
+  describe('edit / delete', () => {
+    const fresh = (over = {}) => ({ ...msg(ME, 0, over), createdAt: new Date().toISOString() });
+    const edits: { messageId: string; body: string }[] = [];
+    const deletes: string[] = [];
+    const actionBtns = () => Array.from(fixture.nativeElement.querySelectorAll('.msg-action')) as HTMLButtonElement[];
+
+    beforeEach(() => {
+      edits.length = 0; deletes.length = 0;
+      fixture.componentRef.setInput('currentUserId', ME);
+      component.editMessage.subscribe(e => edits.push(e));
+      component.deleteMessage.subscribe(id => deletes.push(id));
+    });
+
+    it('offers edit + delete on my own recent message', () => {
+      fixture.componentRef.setInput('messages', [fresh()]);
+      fixture.detectChanges();
+      expect(actionBtns().length).toBe(2);
+    });
+
+    it('offers nothing on someone else\'s message when not a moderator', () => {
+      fixture.componentRef.setInput('messages', [{ ...msg(ALICE, 0), createdAt: new Date().toISOString() }]);
+      fixture.componentRef.setInput('currentUserId', ME);
+      fixture.detectChanges();
+      expect(actionBtns().length).toBe(0);
+    });
+
+    it('lets a moderator delete (but not edit) someone else\'s message', () => {
+      fixture.componentRef.setInput('messages', [{ ...msg(ALICE, 0), createdAt: new Date().toISOString() }]);
+      fixture.componentRef.setInput('currentUserId', ME);
+      fixture.componentRef.setInput('canModerate', true);
+      fixture.detectChanges();
+      const btns = actionBtns();
+      expect(btns.length).toBe(1);
+      expect(btns[0].classList).toContain('msg-action-danger');
+    });
+
+    it('hides edit once the message is older than the window', () => {
+      // msg(ME, 0) uses BASE (2026-09-27) — far past the 24h window.
+      fixture.componentRef.setInput('messages', [msg(ME, 0)]);
+      fixture.detectChanges();
+      expect(actionBtns().length).toBe(0);
+    });
+
+    it('emits an edit with the changed body', () => {
+      fixture.componentRef.setInput('messages', [fresh({ body: 'original' })]);
+      fixture.detectChanges();
+      actionBtns()[0].click();                         // edit
+      fixture.detectChanges();
+      const ta = fixture.nativeElement.querySelector('.msg-edit-input') as HTMLTextAreaElement;
+      ta.value = 'original fixed';
+      ta.dispatchEvent(new Event('input'));
+      (fixture.nativeElement.querySelector('.msg-edit-save') as HTMLButtonElement).click();
+
+      expect(edits).toEqual([{ messageId: 'm-me-0', body: 'original fixed' }]);
+    });
+
+    it('does not emit an edit when the body is unchanged', () => {
+      fixture.componentRef.setInput('messages', [fresh({ body: 'same' })]);
+      fixture.detectChanges();
+      actionBtns()[0].click();
+      fixture.detectChanges();
+      (fixture.nativeElement.querySelector('.msg-edit-save') as HTMLButtonElement).click();
+      expect(edits.length).toBe(0);
+    });
+
+    it('confirms before emitting a delete', () => {
+      fixture.componentRef.setInput('messages', [fresh()]);
+      fixture.detectChanges();
+      spyOn(window, 'confirm').and.returnValue(true);
+
+      actionBtns()[1].click();                         // delete
+
+      expect(deletes).toEqual(['m-me-0']);
+    });
+
+    it('renders a tombstone for a deleted message and no actions', () => {
+      fixture.componentRef.setInput('messages', [fresh({ isDeleted: true, body: '' })]);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.bubble-deleted')).not.toBeNull();
+      expect(actionBtns().length).toBe(0);
+    });
+  });
 });

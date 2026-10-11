@@ -501,6 +501,11 @@ export class ShellLayoutComponent implements OnInit {
           this.channels.set(channels);
           this.channelSvc.updateCache(channels);
 
+          // Badges start from the server's count, so a reload or another device shows the real unread state.
+          const unread: Record<string, number> = {};
+          channels.forEach(c => { if (c.unreadCount) unread[c.id] = c.unreadCount; });
+          this.unreadMap.set(unread);
+
           const init: Record<string, number> = {};
           channels
             .filter(c => c.type === ChannelType.Dm || c.type === ChannelType.GroupDm)
@@ -583,6 +588,11 @@ export class ShellLayoutComponent implements OnInit {
     // Removed from (or left, in another tab) a channel. The server has already pulled this connection out
     // of the group; leaving locally too is belt-and-braces. A private channel also disappears from the
     // sidebar — otherwise the join-all effect above would try to re-join it on the next reconnect.
+    // Read on another tab/device → clear the badge here too.
+    this.realtime.channelRead$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(e => this.unreadMap.update(m => (m[e.channelId] ? { ...m, [e.channelId]: 0 } : m)));
+
     this.realtime.channelAccessRevoked$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(e => {

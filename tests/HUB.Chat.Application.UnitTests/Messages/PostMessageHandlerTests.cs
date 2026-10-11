@@ -410,4 +410,45 @@ public sealed class PostMessageHandlerTests
         await Should.ThrowAsync<DomainException>(() => handler.Handle(
             new PostMessageCommand(other.Id, "hi", MessageFormat.Plain, null, [], author, key), CancellationToken.None));
     }
+
+    // ── Mentions ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task MentioningAnOutsiderInAPrivateChannelNotifiesNobody()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author   = Guid.NewGuid();
+        var member   = Guid.NewGuid();
+        var outsider = Guid.NewGuid();
+        var channel  = Channel.Create(Guid.NewGuid(), "hr", ChannelType.Private, author);
+        channel.AddMember(member);
+        lease.Context.Channels.Add(channel);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var events = new RecordingEventPublisher();
+        var dto = await new PostMessageHandler(lease.Context, events).Handle(
+            new PostMessageCommand(channel.Id, "salary review @all", MessageFormat.Plain, null, [member, outsider], author),
+            CancellationToken.None);
+
+        // The outsider would otherwise get a notification carrying a preview of a private channel.
+        dto.Mentions.ShouldBe([member]);
+        events.Published.OfType<UserMentioned>().Select(e => e.MentionedUserId).ShouldBe([member]);
+    }
+
+    [Fact]
+    public async Task MentioningYourselfDoesNotNotifyYou()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author  = Guid.NewGuid();
+        var channel = ChannelWith(author);
+        lease.Context.Channels.Add(channel);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var events = new RecordingEventPublisher();
+        await new PostMessageHandler(lease.Context, events).Handle(
+            new PostMessageCommand(channel.Id, "note to self", MessageFormat.Plain, null, [author], author),
+            CancellationToken.None);
+
+        events.Published.OfType<UserMentioned>().ShouldBeEmpty();
+    }
 }

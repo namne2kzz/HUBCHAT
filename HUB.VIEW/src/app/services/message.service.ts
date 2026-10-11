@@ -68,6 +68,37 @@ export class MessageService {
   react(messageId: string, emoji: string): Observable<void> {
     return this.http.post<void>(`${this.config.apiBaseUrl}/messages/${messageId}/reactions`, { emoji });
   }
+
+  /**
+   * Removes the caller's own reaction (DELETE /messages/{id}/reactions?emoji=). Idempotent server-side.
+   * @param messageId Message id.
+   * @param emoji Emoji to remove (sent as a query param — emoji do not travel well in a path segment).
+   * @returns Completes on success.
+   */
+  unreact(messageId: string, emoji: string): Observable<void> {
+    return this.http.delete<void>(`${this.config.apiBaseUrl}/messages/${messageId}/reactions`, {
+      params: new HttpParams().set('emoji', emoji),
+    });
+  }
+
+  /**
+   * Edits the caller's own message (PATCH /messages/{id}). Author-only, within the edit window — server enforces.
+   * @param messageId Message id.
+   * @param body New body.
+   * @returns The edited message.
+   */
+  edit(messageId: string, body: string): Observable<MessageDto> {
+    return this.http.patch<MessageDto>(`${this.config.apiBaseUrl}/messages/${messageId}`, { body });
+  }
+
+  /**
+   * Deletes a message (DELETE /messages/{id}) — author within the window, or a channel moderator.
+   * @param messageId Message id.
+   * @returns Completes on success.
+   */
+  delete(messageId: string): Observable<void> {
+    return this.http.delete<void>(`${this.config.apiBaseUrl}/messages/${messageId}`);
+  }
 }
 
 /**

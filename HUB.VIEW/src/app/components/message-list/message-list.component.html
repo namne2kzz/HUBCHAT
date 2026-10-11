@@ -36,22 +36,29 @@
               <span class="bub-ts">{{ row.msg.createdAt | date:'HH:mm' }}</span>
             </div>
           }
-          <div class="bubble bubble-them"
-               [class.bubble-first]="row.showHeader"
-               [class.bubble-continued]="!row.showHeader"
-               [class.bubble-last]="!row.isContinued"
-               [title]="row.msg.createdAt | date:'medium'"
-               [innerHTML]="row.html">
-          </div>
-          @if (!row.isContinued && row.msg.editedAt) {
+          @if (row.isDeleted) {
+            <div class="bubble bubble-them bubble-deleted" [class.bubble-first]="row.showHeader"
+                 [class.bubble-continued]="!row.showHeader" [class.bubble-last]="!row.isContinued">
+              <span class="deleted-note">This message was deleted</span>
+            </div>
+          } @else if (editingId() === row.msg.id) {
+            <ng-container *ngTemplateOutlet="editBoxTpl; context: { $implicit: row }" />
+          } @else {
+            <div class="bubble bubble-them"
+                 [class.bubble-mentions-me]="row.mentionsMe"
+                 [class.bubble-first]="row.showHeader"
+                 [class.bubble-continued]="!row.showHeader"
+                 [class.bubble-last]="!row.isContinued"
+                 [title]="row.msg.createdAt | date:'medium'"
+                 [innerHTML]="row.html">
+            </div>
+            <ng-container *ngTemplateOutlet="actionsTpl; context: { $implicit: row }" />
+          }
+          @if (!row.isDeleted && !row.isContinued && row.msg.editedAt) {
             <span class="bub-edited">edited</span>
           }
-          @if (row.msg.reactions.length > 0) {
-            <div class="bub-reactions">
-              @for (r of row.msg.reactions; track r.emoji) {
-                <span class="reaction-chip">{{ r.emoji }}</span>
-              }
-            </div>
+          @if (!row.isDeleted) {
+            <ng-container *ngTemplateOutlet="reactionsTpl; context: { $implicit: row }" />
           }
         </div>
       </div>
@@ -72,22 +79,28 @@
               <span class="bub-author bub-author-me">You</span>
             </div>
           }
-          <div class="bubble bubble-me"
-               [class.bubble-first]="row.showHeader"
-               [class.bubble-continued]="!row.showHeader"
-               [class.bubble-last]="!row.isContinued"
-               [title]="row.msg.createdAt | date:'medium'"
-               [innerHTML]="row.html">
-          </div>
-          @if (!row.isContinued && row.msg.editedAt) {
+          @if (row.isDeleted) {
+            <div class="bubble bubble-me bubble-deleted" [class.bubble-first]="row.showHeader"
+                 [class.bubble-continued]="!row.showHeader" [class.bubble-last]="!row.isContinued">
+              <span class="deleted-note">This message was deleted</span>
+            </div>
+          } @else if (editingId() === row.msg.id) {
+            <ng-container *ngTemplateOutlet="editBoxTpl; context: { $implicit: row }" />
+          } @else {
+            <div class="bubble bubble-me"
+                 [class.bubble-first]="row.showHeader"
+                 [class.bubble-continued]="!row.showHeader"
+                 [class.bubble-last]="!row.isContinued"
+                 [title]="row.msg.createdAt | date:'medium'"
+                 [innerHTML]="row.html">
+            </div>
+            <ng-container *ngTemplateOutlet="actionsTpl; context: { $implicit: row }" />
+          }
+          @if (!row.isDeleted && !row.isContinued && row.msg.editedAt) {
             <span class="bub-edited bub-edited-me">edited</span>
           }
-          @if (row.msg.reactions.length > 0) {
-            <div class="bub-reactions bub-reactions-me">
-              @for (r of row.msg.reactions; track r.emoji) {
-                <span class="reaction-chip">{{ r.emoji }}</span>
-              }
-            </div>
+          @if (!row.isDeleted) {
+            <ng-container *ngTemplateOutlet="reactionsTpl; context: { $implicit: row }" />
           }
         </div>
       </div>
@@ -111,3 +124,73 @@
   }
 
 </div>
+
+<!-- ── Reactions (shared by both sides) ─────────────────────────────────────
+     One chip per emoji with a count; the viewer's own are highlighted and a click removes them.
+     The add button appears on row hover (or while its picker is open) so it costs no space otherwise. -->
+<ng-template #reactionsTpl let-row>
+  @if (row.reactions.length || canReact()) {
+    <div class="bub-reactions" [class.bub-reactions-me]="row.isOwn"
+         [class.bub-reactions-empty]="!row.reactions.length">
+      @for (g of row.reactions; track g.emoji) {
+        <button type="button" class="reaction-chip"
+                [class.reaction-chip-mine]="g.mine"
+                [attr.aria-pressed]="g.mine"
+                [disabled]="!canReact()"
+                [title]="reactorNames(g)"
+                (click)="toggle(row.msg.id, g.emoji)">
+          <span class="reaction-emoji">{{ g.emoji }}</span>
+          <span class="reaction-count">{{ g.count }}</span>
+        </button>
+      }
+      @if (canReact()) {
+        <div class="reaction-add-wrap" [class.reaction-add-open]="pickerFor() === row.msg.id"
+             (mouseleave)="pickerFor() === row.msg.id && togglePicker(row.msg.id)">
+          <button type="button" class="reaction-add" title="Add reaction" aria-label="Add reaction"
+                  (click)="togglePicker(row.msg.id)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </button>
+          @if (pickerFor() === row.msg.id) {
+            <div class="reaction-picker" role="menu" aria-label="Pick a reaction">
+              @for (e of quickEmojis; track e) {
+                <button type="button" class="reaction-pick" role="menuitem" (click)="toggle(row.msg.id, e)">{{ e }}</button>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+</ng-template>
+
+<!-- ── Message actions (edit/delete) — appear on row hover ─────────────────── -->
+<ng-template #actionsTpl let-row>
+  @if (row.canEdit || row.canDelete) {
+    <div class="msg-actions" [class.msg-actions-me]="row.isOwn">
+      @if (row.canEdit) {
+        <button type="button" class="msg-action" title="Edit" aria-label="Edit message" (click)="startEdit(row)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+      }
+      @if (row.canDelete) {
+        <button type="button" class="msg-action msg-action-danger" title="Delete" aria-label="Delete message" (click)="confirmDelete(row.msg.id)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      }
+    </div>
+  }
+</ng-template>
+
+<!-- ── Inline edit box ─────────────────────────────────────────────────────── -->
+<ng-template #editBoxTpl let-row>
+  <div class="msg-edit">
+    <textarea class="msg-edit-input" rows="1" [value]="editDraft()"
+              (input)="onEditInput($event)" (keydown)="onEditKeydown($event, row)"
+              aria-label="Edit message"></textarea>
+    <div class="msg-edit-actions">
+      <button type="button" class="msg-edit-cancel" (click)="cancelEdit()">Cancel</button>
+      <button type="button" class="msg-edit-save" (click)="saveEdit(row)">Save</button>
+    </div>
+    <span class="msg-edit-hint">Enter to save · Esc to cancel</span>
+  </div>
+</ng-template>

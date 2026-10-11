@@ -7,6 +7,7 @@ using HUB.Chat.Domain.Entities;
 using HUB.Chat.Domain.Enums;
 using HUB.Chat.Infrastructure.Persistence;
 using HUB.TestKit.Db;
+using HUB.TestKit.Builders;
 using Shouldly;
 using Xunit;
 
@@ -399,5 +400,78 @@ public sealed class ChannelQueryHandlerTests
         // Returns false rather than throwing: the caller is a hub deciding whether to add a connection,
         // so it must not create a group for an id that does not exist.
         allowed.ShouldBeFalse();
+    }
+
+    // ── Unread counts ───────────────────────────────────────────────────────
+
+    private static async Task<int> UnreadFor(ChatDbContextLease lease, Guid workspace, Guid channelId, Guid user) =>
+        (await new ListChannelsHandler(lease.Context)
+            .Handle(new ListChannelsQuery(workspace, user), CancellationToken.None))
+        .Single(c => c.Id == channelId).UnreadCount;
+
+    [Fact]
+    public async Task UnreadCountsOthersTopLevelMessagesAfterTheReadPoint()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var (workspace, me, bob) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var channel = Seed(lease.Context, workspace, me);
+        channel.AddMember(bob);
+        var now = DateTime.UtcNow;
+        channel.Members.Single(m => m.UserId == me).MarkRead(now.AddMinutes(10));
+
+        var read     = Message.Post(channel.Id, bob, "already read").WithCreatedAt(now.AddMinutes(5));
+        var unread1  = Message.Post(channel.Id, bob, "new 1").WithCreatedAt(now.AddMinutes(20));
+        var unread2  = Message.Post(channel.Id, bob, "new 2").WithCreatedAt(now.AddMinutes(21));
+        var mine     = Message.Post(channel.Id, me, "my own").WithCreatedAt(now.AddMinutes(22));
+        var reply    = Message.Post(channel.Id, bob, "thread reply", parentId: read.Id).WithCreatedAt(now.AddMinutes(23));
+        var deleted  = Message.Post(channel.Id, bob, "gone").WithCreatedAt(now.AddMinutes(24));
+        deleted.SoftDelete();
+        lease.Context.Messages.AddRange(read, unread1, unread2, mine, reply, deleted);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        // Only bob's two new top-level messages: not my own, not a thread reply, not a deleted one.
+        (await UnreadFor(lease, workspace, channel.Id, me)).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task ANeverReadMemberCountsOnlyWhatArrivedAfterTheyJoined()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var (workspace, owner, newcomer) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var channel = Seed(lease.Context, workspace, owner);
+        lease.Context.Messages.Add(Message.Post(channel.Id, owner, "history").WithCreatedAt(DateTime.UtcNow.AddDays(-30)));
+        channel.AddMember(newcomer);
+        lease.Context.Messages.Add(Message.Post(channel.Id, owner, "welcome").WithCreatedAt(DateTime.UtcNow.AddMinutes(1)));
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        // A month of history is not "unread" to someone who just joined.
+        (await UnreadFor(lease, workspace, channel.Id, newcomer)).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ANonMemberOfAPublicChannelHasNoUnread()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var (workspace, owner) = (Guid.NewGuid(), Guid.NewGuid());
+        var channel = Seed(lease.Context, workspace, owner);
+        lease.Context.Messages.Add(Message.Post(channel.Id, owner, "hello").WithCreatedAt(DateTime.UtcNow.AddMinutes(1)));
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        (await UnreadFor(lease, workspace, channel.Id, Guid.NewGuid())).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task UnreadIsCappedSoABacklogStaysCheap()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var (workspace, me, bob) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var channel = Seed(lease.Context, workspace, me);
+        channel.AddMember(bob);
+        var start = DateTime.UtcNow.AddMinutes(1);
+        lease.Context.Messages.AddRange(Enumerable.Range(0, ListChannelsHandler.UnreadCap + 20)
+            .Select(i => Message.Post(channel.Id, bob, $"m{i}").WithCreatedAt(start.AddSeconds(i))));
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        (await UnreadFor(lease, workspace, channel.Id, me)).ShouldBe(ListChannelsHandler.UnreadCap);
     }
 }

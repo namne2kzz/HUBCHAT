@@ -116,6 +116,15 @@ public sealed class Message : AggregateRoot
         Touch();
     }
 
+    /// <summary>Window during which the author may edit or delete their own message.</summary>
+    /// <remarks>Moderators (channel Owner/Admin) are not bound by this — that check lives in the application layer.</remarks>
+    public static readonly TimeSpan AuthorEditWindow = TimeSpan.FromHours(24);
+
+    /// <summary>True when <paramref name="now"/> is still inside the author's edit/delete window.</summary>
+    /// <param name="now">Current UTC time.</param>
+    /// <returns>True while the author may still change this message.</returns>
+    public bool IsWithinAuthorWindow(DateTime now) => now - CreatedAt <= AuthorEditWindow;
+
     /// <summary>Soft-deletes the message.</summary>
     public void SoftDelete()
     {
@@ -141,9 +150,13 @@ public sealed class Message : AggregateRoot
     /// <summary>Removes a user's reaction if present.</summary>
     /// <param name="userId">Reacting user.</param>
     /// <param name="emoji">Emoji shortcode.</param>
-    public void RemoveReaction(Guid userId, string emoji)
+    /// <returns>True when a reaction was removed; false when the user had none with that emoji (no change).</returns>
+    public bool RemoveReaction(Guid userId, string emoji)
     {
         var existing = _reactions.FirstOrDefault(r => r.UserId == userId && r.Emoji == emoji);
-        if (existing is not null) { _reactions.Remove(existing); Touch(); }
+        if (existing is null) return false;
+        _reactions.Remove(existing);
+        Touch();
+        return true;
     }
 }

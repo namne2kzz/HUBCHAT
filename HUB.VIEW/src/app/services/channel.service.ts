@@ -65,6 +65,17 @@ export class ChannelService {
    * @param workspaceId Workspace (DASHBOARD repository) id.
    * @returns Observable of channels.
    */
+  /**
+   * Marks the channel read up to a point (POST /channels/{id}/read). The server never moves the read
+   * point backwards and caps it at "now", so calling this on every new message is safe.
+   * @param id Channel id.
+   * @param readAt Read up to this time — use the newest message's createdAt (server clock), not the browser's.
+   * @returns Completes on success.
+   */
+  markRead(id: string, readAt: string): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/${id}/read`, { readAt });
+  }
+
   list(workspaceId: string): Observable<ChannelDto[]> {
     const params = new HttpParams().set('workspaceId', workspaceId);
     return this.http.get<ChannelDto[]>(this.apiUrl, { params });

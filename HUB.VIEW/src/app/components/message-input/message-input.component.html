@@ -41,11 +41,27 @@
 
     <!-- ── Input row ──────────────────────────────────────────────────────── -->
     <div class="composer-row">
+      @if (suggestions().length) {
+        <!-- mousedown + preventDefault: picking must not blur the textarea first (blur closes the list). -->
+        <ul class="mention-list" role="listbox" aria-label="Mention someone">
+          @for (u of suggestions(); track u.id; let i = $index) {
+            <li class="mention-item" role="option"
+                [class.mention-item-active]="i === mentionIndex()"
+                [attr.aria-selected]="i === mentionIndex()"
+                (mousedown)="$event.preventDefault(); pickMention(u)"
+                (mouseenter)="mentionIndex.set(i)">
+              <span class="mention-name">{{ u.name }}</span>
+              <span class="mention-email">{{ u.email }}</span>
+            </li>
+          }
+        </ul>
+      }
       <textarea
         #ta
         [value]="body()"
         (input)="onInput($event)"
         (keydown)="onKeydown($event)"
+        (blur)="mentionQuery.set(null)"
         [class.mono]="codeMode()"
         [placeholder]="codeMode() ? 'Type your code…' : ('Message #' + channelName())"
         rows="1"

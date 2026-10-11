@@ -87,7 +87,7 @@ public sealed class ListMessagesAfterHandlerTests
     }
 
     [Fact]
-    public async Task RepliesAndDeletedMessagesAreLeftOut()
+    public async Task RepliesAreLeftOutButDeletedTombstonesComeThrough()
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();
         var (channel, messages, member) = await SeedAsync(lease, 2);
@@ -101,8 +101,9 @@ public sealed class ListMessagesAfterHandlerTests
         var result = await new ListMessagesAfterHandler(lease.Context)
             .Handle(new ListMessagesAfterQuery(channel.Id, member, messages[0].Id, 100), Ct);
 
-        // Same shape as the main list (top-level, not deleted), so catch-up never shows what a reload would not.
-        result.Select(m => m.Body).ShouldBe(["m1"]);
+        // Same shape as the main list: thread replies excluded, but a deleted top-level message comes
+        // through as a tombstone so catch-up matches what a reload shows.
+        result.Select(m => (m.Body, m.IsDeleted)).ShouldBe([("m1", false), (string.Empty, true)]);
     }
 
     [Fact]

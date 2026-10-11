@@ -429,7 +429,7 @@ public sealed class ChannelMembershipHandlerTests
         var channel = await SeedChannelAsync(lease.Context, owner);
 
         var readAt = new DateTime(2026, 9, 27, 12, 0, 0, DateTimeKind.Utc);
-        await new MarkReadHandler(lease.Context)
+        await new MarkReadHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new MarkReadCommand(channel.Id, owner, readAt), CancellationToken.None);
 
         await using var verify = lease.NewContext();
@@ -447,7 +447,7 @@ public sealed class ChannelMembershipHandlerTests
         var channel = await SeedChannelAsync(lease.Context, owner);
 
         var before = DateTime.UtcNow;
-        await new MarkReadHandler(lease.Context)
+        await new MarkReadHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new MarkReadCommand(channel.Id, owner, null), CancellationToken.None);
 
         await using var verify = lease.NewContext();
@@ -465,7 +465,7 @@ public sealed class ChannelMembershipHandlerTests
         var owner   = Guid.NewGuid();
         var channel = await SeedChannelAsync(lease.Context, owner);
 
-        var handler = new MarkReadHandler(lease.Context);
+        var handler = new MarkReadHandler(lease.Context, new RecordingEventPublisher());
         var later   = new DateTime(2026, 9, 27, 12, 0, 0, DateTimeKind.Utc);
 
         await handler.Handle(new MarkReadCommand(channel.Id, owner, later), CancellationToken.None);
@@ -486,7 +486,7 @@ public sealed class ChannelMembershipHandlerTests
         await using var lease = await ChatDbContextFactory.CreateAsync();
         var channel = await SeedChannelAsync(lease.Context, Guid.NewGuid());
 
-        await Should.ThrowAsync<ForbiddenException>(() => new MarkReadHandler(lease.Context)
+        await Should.ThrowAsync<ForbiddenException>(() => new MarkReadHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new MarkReadCommand(channel.Id, Guid.NewGuid(), null), CancellationToken.None));
     }
 
@@ -495,7 +495,61 @@ public sealed class ChannelMembershipHandlerTests
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();
 
-        await Should.ThrowAsync<NotFoundException>(() => new MarkReadHandler(lease.Context)
+        await Should.ThrowAsync<NotFoundException>(() => new MarkReadHandler(lease.Context, new RecordingEventPublisher())
             .Handle(new MarkReadCommand(Guid.NewGuid(), Guid.NewGuid(), null), CancellationToken.None));
+    }
+
+    // ── Mark read: clamping + cross-device sync event ───────────────────────
+
+    [Fact]
+    public async Task AReadPointInTheFutureIsCappedAtNow()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var owner   = Guid.NewGuid();
+        var channel = await SeedChannelAsync(lease.Context, owner);
+
+        await new MarkReadHandler(lease.Context, new RecordingEventPublisher())
+            .Handle(new MarkReadCommand(channel.Id, owner, DateTime.UtcNow.AddDays(1)), CancellationToken.None);
+
+        // Otherwise messages that do not exist yet would arrive already "read".
+        await using var verify = lease.NewContext();
+        var stored = await verify.Channels.Include(c => c.Members).SingleAsync(c => c.Id == channel.Id);
+        stored.Members.Single(m => m.UserId == owner).LastReadAt!.Value.ShouldBeLessThanOrEqualTo(DateTime.UtcNow);
+    }
+
+    [Fact]
+    public async Task MovingTheReadPointAnnouncesItForTheUsersOtherSessions()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var owner   = Guid.NewGuid();
+        var channel = await SeedChannelAsync(lease.Context, owner);
+        var events  = new RecordingEventPublisher();
+        var readAt  = DateTime.UtcNow.AddMinutes(-1);
+
+        await new MarkReadHandler(lease.Context, events)
+            .Handle(new MarkReadCommand(channel.Id, owner, readAt), CancellationToken.None);
+
+        var e = events.Published.OfType<ChannelReadMarked>().ShouldHaveSingleItem();
+        e.ChannelId.ShouldBe(channel.Id);
+        e.UserId.ShouldBe(owner);
+        e.ReadAt.ShouldBe(readAt);
+    }
+
+    [Fact]
+    public async Task ARepeatOrOlderReadPointAnnouncesNothing()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var owner   = Guid.NewGuid();
+        var channel = await SeedChannelAsync(lease.Context, owner);
+        var events  = new RecordingEventPublisher();
+        var handler = new MarkReadHandler(lease.Context, events);
+        var readAt  = DateTime.UtcNow.AddMinutes(-1);
+
+        await handler.Handle(new MarkReadCommand(channel.Id, owner, readAt), CancellationToken.None);
+        await handler.Handle(new MarkReadCommand(channel.Id, owner, readAt), CancellationToken.None);
+        await handler.Handle(new MarkReadCommand(channel.Id, owner, readAt.AddMinutes(-5)), CancellationToken.None);
+
+        // The client calls this on every new message; only real progress may push to other devices.
+        events.Published.OfType<ChannelReadMarked>().Count().ShouldBe(1);
     }
 }

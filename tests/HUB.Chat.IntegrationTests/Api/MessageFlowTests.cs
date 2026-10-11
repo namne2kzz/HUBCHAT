@@ -292,6 +292,44 @@ public sealed class MessageFlowTests(PostgresFixture database) : IAsyncLifetime
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
+    // ── Unread counts (server-side, survives reload) ────────────────────────
+
+    [Fact]
+    public async Task UnreadCountComesFromTheServerAndClearsWhenMarkedRead()
+    {
+        // The count is a correlated subquery inside the channel-list projection — only real PostgreSQL proves
+        // Npgsql translates it.
+        var workspace = Guid.NewGuid();
+        var (readerId, authorId) = (Guid.NewGuid(), Guid.NewGuid());
+        using var reader = As(readerId);
+        using var author = As(authorId);
+
+        var created = await reader.PostAsJsonAsync("/api/v1/channels", new { workspaceId = workspace, name = "unread", type = 0, topic = (string?)null });
+        var channelId = (await created.Content.ReadFromJsonAsync<ChannelResponse>())!.Id;
+        (await author.PostAsync($"/api/v1/channels/{channelId}/members", null)).EnsureSuccessStatusCode();
+
+        MessageWithTime? last = null;
+        foreach (var body in new[] { "one", "two" })
+        {
+            var r = await author.PostAsJsonAsync($"/api/v1/channels/{channelId}/messages", Post(body));
+            last = await r.Content.ReadFromJsonAsync<MessageWithTime>();
+        }
+
+        async Task<int> UnreadAsync() =>
+            (await reader.GetFromJsonAsync<List<ChannelWithUnread>>($"/api/v1/channels?workspaceId={workspace}"))!
+            .Single(c => c.Id == channelId).UnreadCount;
+
+        (await UnreadAsync()).ShouldBe(2);
+
+        (await reader.PostAsJsonAsync($"/api/v1/channels/{channelId}/read", new { readAt = last!.CreatedAt }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await UnreadAsync()).ShouldBe(0);
+    }
+
+    private sealed record ChannelWithUnread(Guid Id, int UnreadCount);
+
+    private sealed record MessageWithTime(Guid Id, DateTime CreatedAt);
+
     // ── Reactions ───────────────────────────────────────────────────────────
 
     [Fact]

@@ -89,6 +89,7 @@
 
 /* ── Input row (textarea + send) ────────────────────────────────────────── */
 .composer-row {
+  position: relative; // anchors the @mention list
   display: flex;
   align-items: flex-end;
   gap: 6px;
@@ -130,4 +131,40 @@
   font-size: 0.72rem;
   color: var(--danger);
   svg { flex-shrink: 0; }
+}
+
+// ── @mention suggestions ───────────────────────────────────────────────────
+.mention-list {
+  position: absolute;
+  left: 4px;
+  bottom: calc(100% + 4px);
+  z-index: 20;
+  min-width: 240px;
+  max-width: 360px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+.mention-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.mention-item-active {
+  background: var(--bg-hover);
+}
+.mention-name {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.mention-email {
+  font-size: 11px;
+  color: var(--text-muted);
 }

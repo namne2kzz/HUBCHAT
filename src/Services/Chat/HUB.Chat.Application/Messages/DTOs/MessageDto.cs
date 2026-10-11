@@ -16,4 +16,6 @@ public sealed record MessageDto(
     IReadOnlyList<ReactionDto> Reactions,
     IReadOnlyList<AttachmentDto> Attachments,
     DateTime? EditedAt,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    /// <summary>True when the message was deleted — rendered as a "message deleted" tombstone; Body is empty.</summary>
+    bool IsDeleted = false);

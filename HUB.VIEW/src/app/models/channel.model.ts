@@ -41,8 +41,17 @@ export interface ChannelDto {
   otherUserId?: string | null;
   /** The current user's role in this channel; null when not a member. */
   myRole?: ChannelMemberRole | null;
-  /** Local-only: incremented by shell on incoming realtime message. Not from server. */
+  /**
+   * Unread top-level messages from others since the caller's read point (server-computed, capped at 100).
+   * Seeds the sidebar badge on load; realtime then keeps the badge current.
+   */
   unreadCount?: number;
+}
+
+/** Pushed to the reader's own sessions when they read a channel elsewhere (another tab/device). */
+export interface ChannelReadEvent {
+  channelId: string;
+  readAt: string;
 }
 
 /** Mirrors HUB.Chat.Application.Channels.DTOs.ChannelMemberDto. */

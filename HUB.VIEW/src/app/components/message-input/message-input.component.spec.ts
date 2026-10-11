@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ComposerSubmit, MessageInputComponent } from './message-input.component';
 import { MessageFormat } from '../../models/message.model';
+import { DirectoryUser } from '../../models/directory.model';
 
 /**
  * Covers the message composer.
@@ -379,6 +380,73 @@ describe('MessageInputComponent', () => {
       inner().bullet();
 
       expect(inner().body()).toBe('- one\n- two');
+    });
+  });
+  describe('@mentions', () => {
+    const user = (id: string, name: string) =>
+      ({ id, name, email: id + '@corp.io', avatarClass: '', isGlobalAdmin: false, isDeleted: false } as DirectoryUser);
+    const list = () => fixture.nativeElement.querySelectorAll('.mention-item') as NodeListOf<HTMLElement>;
+
+    beforeEach(() => {
+      fixture.componentRef.setInput('mentionCandidates', [user('u1', 'Nam Huynh'), user('u2', 'An Tran')]);
+      fixture.detectChanges();
+    });
+
+    it('opens the list on @ and filters it as you type', () => {
+      type('hi @an');
+      expect(Array.from(list()).map(li => li.textContent ?? '')).toEqual([jasmine.stringContaining('An Tran')]);
+    });
+
+    it('Enter picks the highlighted user instead of sending', () => {
+      type('hi @an');
+
+      const event = press('Enter');
+
+      // Sending here would post "hi @an" and mention nobody.
+      expect(sent.length).toBe(0);
+      expect(event.defaultPrevented).toBeTrue();
+      expect(inner().body()).toBe('hi @An Tran ');
+      expect(list().length).toBe(0);
+    });
+
+    it('arrow keys move the highlight', () => {
+      type('@');
+      press('ArrowDown');
+      press('Enter');
+      expect(inner().body()).toBe('@An Tran ');
+    });
+
+    it('sends the ids of the people mentioned', () => {
+      type('ping @nam');
+      press('Enter');                       // picks Nam Huynh
+      type(inner().body() + 'please review');
+      press('Enter');                       // list closed → sends
+
+      expect(sent.length).toBe(1);
+      expect(sent[0].mentionedUserIds).toEqual(['u1']);
+    });
+
+    it('a mention whose name was deleted is not sent', () => {
+      type('@nam');
+      press('Enter');
+      type('never mind');                   // the @Nam Huynh text is gone
+
+      inner().submit();
+
+      expect(sent[0].mentionedUserIds).toEqual([]);
+    });
+
+    it('Escape closes the list without touching the text', () => {
+      type('hi @an');
+      press('Escape');
+      expect(list().length).toBe(0);
+      expect(inner().body()).toBe('hi @an');
+    });
+
+    it('does not open inside a code block', () => {
+      type('```');                          // enters code mode
+      type('@an');
+      expect(list().length).toBe(0);
     });
   });
 });

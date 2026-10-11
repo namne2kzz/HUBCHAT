@@ -148,4 +148,26 @@ public sealed class ChannelMemberTests
 
         member.LastReadAt.ShouldBe(Noon.AddMinutes(7), "the marker keeps the furthest point reached");
     }
+
+    [Fact]
+    public void APrivateChannelOnlyLetsMembersBeMentioned()
+    {
+        var owner   = Guid.NewGuid();
+        var member  = Guid.NewGuid();
+        var outsider = Guid.NewGuid();
+        var channel = Channel.Create(Guid.NewGuid(), "hr", ChannelType.Private, owner);
+        channel.AddMember(member);
+
+        // A mention notifies with a preview — an outsider would receive private content.
+        channel.MentionableAmong([member, outsider, member]).ShouldBe([member]);
+    }
+
+    [Fact]
+    public void APublicChannelLetsAnyoneBeMentioned()
+    {
+        var channel  = Channel.Create(Guid.NewGuid(), "general", ChannelType.Public, Guid.NewGuid());
+        var outsider = Guid.NewGuid();
+
+        channel.MentionableAmong([outsider, outsider]).ShouldBe([outsider]);
+    }
 }

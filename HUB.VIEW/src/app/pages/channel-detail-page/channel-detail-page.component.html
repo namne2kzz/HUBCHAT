@@ -117,6 +117,11 @@
           [hasMore]="hasMore()"
           [currentUserId]="currentUserId()"
           [highlightedId]="highlightedMessageId()"
+          [canReact]="canPost()"
+          [canModerate]="canModerate()"
+          (toggleReaction)="onToggleReaction($event)"
+          (editMessage)="onEditMessage($event)"
+          (deleteMessage)="onDeleteMessage($event)"
           (loadMore)="loadMore()"
           class="flex-1 overflow-y-auto" />
       }
@@ -128,6 +133,7 @@
       @if (canPost()) {
         <app-message-input
           [channelName]="channelTitle()"
+          [mentionCandidates]="mentionCandidates()"
           (send)="sendMessage($event)"
           (typing)="onTyping()"
           class="shrink-0" />

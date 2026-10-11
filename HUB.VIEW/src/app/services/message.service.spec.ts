@@ -186,4 +186,15 @@ describe('MessageService', () => {
       req.flush(null);
     });
   });
+
+  describe('unreact', () => {
+    it('deletes the reaction with the emoji as a query parameter', () => {
+      service.unreact('m1', '👍').subscribe();
+
+      const req = http.expectOne(r => r.url === API + '/messages/m1/reactions');
+      expect(req.request.method).toBe('DELETE');
+      expect(req.request.params.get('emoji')).toBe('👍');
+      req.flush(null);
+    });
+  });
 });
