@@ -1,3 +1,4 @@
+using System.Text.Json;
 using StackExchange.Redis;
 
 namespace HUB.Realtime.WebApi.Presence;
@@ -13,6 +14,10 @@ public sealed class RedisPresenceStore(IConnectionMultiplexer redis) : IPresence
     private static string Conns(Guid u)  => $"conn:{u}";
     private static string Status(Guid u) => $"presence:{u}";
     private static string Manual(Guid u) => $"manual:{u}"; // user-chosen override (Away/DoNotDisturb)
+    private static string Custom(Guid u) => $"custom:{u}"; // user-chosen note+emoji (CF-19)
+
+    /// <summary>On-the-wire shape of a custom status in Redis.</summary>
+    private sealed record CustomStatusPayload(string Emoji, string Text, long? ExpiresAtUnixMs);
 
     /// <inheritdoc />
     public async Task<PresenceStatus?> AddConnectionAsync(Guid userId, string connectionId, CancellationToken ct)
@@ -88,6 +93,41 @@ public sealed class RedisPresenceStore(IConnectionMultiplexer redis) : IPresence
         {
             var v = values[i++];
             result[u] = v.HasValue && int.TryParse(v.ToString(), out var s) ? (PresenceStatus)s : PresenceStatus.Offline;
+        }
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<CustomStatus?> SetCustomStatusAsync(Guid userId, CustomStatus status, CancellationToken ct)
+    {
+        var decision = CustomStatusPolicy.Evaluate(status, DateTimeOffset.UtcNow);
+        if (decision.Store is not { } store)
+        {
+            await _db.KeyDeleteAsync(Custom(userId));
+            return null;
+        }
+
+        var payload = new CustomStatusPayload(store.Emoji, store.Text, store.ExpiresAt?.ToUnixTimeMilliseconds());
+        await _db.StringSetAsync(Custom(userId), JsonSerializer.Serialize(payload), decision.Ttl);
+        return store;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<Guid, CustomStatus>> GetCustomStatusesAsync(
+        IReadOnlyCollection<Guid> userIds, CancellationToken ct)
+    {
+        var keys = userIds.Select(u => (RedisKey)Custom(u)).ToArray();
+        var values = keys.Length == 0 ? [] : await _db.StringGetAsync(keys);
+        var result = new Dictionary<Guid, CustomStatus>(userIds.Count);
+        var i = 0;
+        foreach (var u in userIds)
+        {
+            var v = values[i++];
+            if (!v.HasValue) continue; // expired keys simply aren't there
+            var p = JsonSerializer.Deserialize<CustomStatusPayload>(v.ToString());
+            if (p is null) continue;
+            var expires = p.ExpiresAtUnixMs is { } ms ? DateTimeOffset.FromUnixTimeMilliseconds(ms) : (DateTimeOffset?)null;
+            result[u] = new CustomStatus(p.Emoji, p.Text, expires);
         }
         return result;
     }

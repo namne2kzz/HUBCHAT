@@ -197,4 +197,59 @@ describe('MessageService', () => {
       req.flush(null);
     });
   });
+
+  describe('listReplies', () => {
+    it('GETs the replies of a thread', () => {
+      let got: unknown;
+      service.listReplies('c1', 'm1').subscribe(r => (got = r));
+      const req = http.expectOne(r => r.url === `${MESSAGES}/m1/replies`);
+      expect(req.request.method).toBe('GET');
+      req.flush([{ id: 'r1' }, { id: 'r2' }]);
+      expect(got).toEqual([{ id: 'r1' }, { id: 'r2' }]);
+    });
+  });
+
+  describe('forward', () => {
+    it('POSTs the target channel to the forward endpoint', () => {
+      service.forward('m1', 'c2').subscribe();
+      const req = http.expectOne(API + '/messages/m1/forward');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({ targetChannelId: 'c2' });
+      req.flush({ id: 'm9' });
+    });
+  });
+
+  describe('search', () => {
+    it('GETs the search endpoint with the query and limit', () => {
+      let got: unknown;
+      service.search('c1', 'deploy', 10).subscribe(r => (got = r));
+      const req = http.expectOne(r => r.url === MESSAGES + '/search');
+      expect(req.request.method).toBe('GET');
+      expect(req.request.params.get('q')).toBe('deploy');
+      expect(req.request.params.get('limit')).toBe('10');
+      req.flush([{ id: 'm1' }]);
+      expect(got).toEqual([{ id: 'm1' }]);
+    });
+  });
+
+  describe('pin', () => {
+    it('POSTs to pin', () => {
+      service.pin('m1').subscribe();
+      const req = http.expectOne(API + '/messages/m1/pin');
+      expect(req.request.method).toBe('POST');
+      req.flush(null);
+    });
+    it('DELETEs to unpin', () => {
+      service.unpin('m1').subscribe();
+      const req = http.expectOne(API + '/messages/m1/pin');
+      expect(req.request.method).toBe('DELETE');
+      req.flush(null);
+    });
+    it('GETs the pinned list', () => {
+      service.listPinned('c1').subscribe();
+      const req = http.expectOne(r => r.url === MESSAGES + '/pinned');
+      expect(req.request.method).toBe('GET');
+      req.flush([]);
+    });
+  });
 });

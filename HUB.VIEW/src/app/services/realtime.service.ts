@@ -6,7 +6,7 @@ import { AuthService } from './auth.service';
 import { MessageDeletedEvent, MessageEditedEvent, MessageReceivedEvent, ReactionAddedEvent, ReactionRemovedEvent, TypingEvent } from '../models/message.model';
 import { ChannelAccessRevokedEvent, ChannelReadEvent } from '../models/channel.model';
 import { NotificationReceivedEvent } from '../models/notification.model';
-import { PresenceChangedEvent } from '../models/presence.model';
+import { CustomStatusChangedEvent, PresenceChangedEvent } from '../models/presence.model';
 
 export type HubConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -27,6 +27,7 @@ export class RealtimeService implements OnDestroy {
   readonly messageDeleted$       = new Subject<MessageDeletedEvent>();
   readonly notificationReceived$ = new Subject<NotificationReceivedEvent>();
   readonly presenceChanged$      = new Subject<PresenceChangedEvent>();
+  readonly customStatusChanged$  = new Subject<CustomStatusChangedEvent>();
   readonly typingStarted$        = new Subject<TypingEvent>();
   readonly typingStopped$        = new Subject<TypingEvent>();
   readonly reactionAdded$        = new Subject<ReactionAddedEvent>();
@@ -35,6 +36,8 @@ export class RealtimeService implements OnDestroy {
   readonly channelAccessRevoked$ = new Subject<ChannelAccessRevokedEvent>();
   /** The current user read a channel in another tab/device — clear its unread badge here too. */
   readonly channelRead$ = new Subject<ChannelReadEvent>();
+  /** A message was pinned/unpinned in a channel. */
+  readonly messagePinChanged$ = new Subject<{ messageId: string; channelId: string; isPinned: boolean }>();
   /**
    * Emits after an automatic reconnect. Group memberships and anything pushed while disconnected are lost —
    * subscribers re-join what they need and fetch the gap (see channel-detail-page catch-up).
@@ -122,6 +125,18 @@ export class RealtimeService implements OnDestroy {
     await this.connection.invoke('SetStatus', status).catch(() => {/* silent */});
   }
 
+  /**
+   * Sets (or clears) the caller's custom status on the server (CF-19).
+   * No-op if not connected. Empty emoji+text clears it.
+   * @param emoji A single emoji, or ''.
+   * @param text The status note, or '' to clear.
+   * @param expiresAtUnixMs Auto-clear time in Unix ms, or null for "don't clear".
+   */
+  async setCustomStatus(emoji: string, text: string, expiresAtUnixMs: number | null): Promise<void> {
+    if (this.connection?.state !== signalR.HubConnectionState.Connected) return;
+    await this.connection.invoke('SetCustomStatus', emoji, text, expiresAtUnixMs).catch(() => {/* silent */});
+  }
+
   ngOnDestroy(): void {
     clearInterval(this.heartbeatTimer);
     this.connection?.stop();
@@ -130,12 +145,14 @@ export class RealtimeService implements OnDestroy {
     this.messageDeleted$.complete();
     this.notificationReceived$.complete();
     this.presenceChanged$.complete();
+    this.customStatusChanged$.complete();
     this.typingStarted$.complete();
     this.typingStopped$.complete();
     this.reactionAdded$.complete();
     this.reactionRemoved$.complete();
     this.channelAccessRevoked$.complete();
     this.channelRead$.complete();
+    this.messagePinChanged$.complete();
     this.reconnected$.complete();
   }
 
@@ -156,11 +173,13 @@ export class RealtimeService implements OnDestroy {
     this.connection.on('messageDeleted',       (e: MessageDeletedEvent)       => this.messageDeleted$.next(e));
     this.connection.on('NotificationReceived', (e: NotificationReceivedEvent) => this.notificationReceived$.next(e));
     this.connection.on('presenceChanged',      (e: PresenceChangedEvent)      => this.presenceChanged$.next(e));
+    this.connection.on('customStatusChanged',  (e: CustomStatusChangedEvent)  => this.customStatusChanged$.next(e));
     this.connection.on('typingStarted',        (e: TypingEvent)               => this.typingStarted$.next(e));
     this.connection.on('typingStopped',        (e: TypingEvent)               => this.typingStopped$.next(e));
     this.connection.on('reactionAdded',        (e: ReactionAddedEvent)        => this.reactionAdded$.next(e));
     this.connection.on('reactionRemoved',      (e: ReactionRemovedEvent)      => this.reactionRemoved$.next(e));
     this.connection.on('channelAccessRevoked', (e: ChannelAccessRevokedEvent) => this.channelAccessRevoked$.next(e));
     this.connection.on('channelRead',          (e: ChannelReadEvent)          => this.channelRead$.next(e));
+    this.connection.on('messagePinChanged',    (e: { messageId: string; channelId: string; isPinned: boolean }) => this.messagePinChanged$.next(e));
   }
 }

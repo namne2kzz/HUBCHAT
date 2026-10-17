@@ -112,6 +112,24 @@ describe('ChannelService', () => {
       expect(req.request.body).toEqual({ newOwnerUserId: 'u2' });
       req.flush(channel());
     });
+
+    it('archives a channel with POST to /archive', () => {
+      service.archive('c1').subscribe();
+
+      const req = http.expectOne(`${CHANNELS}/c1/archive`);
+      expect(req.request.method).toBe('POST');
+      req.flush(null);
+    });
+
+    it('reopens a channel with DELETE on the same /archive route', () => {
+      // Reopen is the inverse of archive on one resource, so it shares the URL and flips the verb —
+      // the same shape as a soft-delete toggle elsewhere in the API.
+      service.unarchive('c1').subscribe();
+
+      const req = http.expectOne(`${CHANNELS}/c1/archive`);
+      expect(req.request.method).toBe('DELETE');
+      req.flush(null);
+    });
   });
 
   describe('membership', () => {

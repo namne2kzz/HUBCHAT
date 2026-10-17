@@ -6,6 +6,7 @@ import { StorageService } from '../core/services/storage.service';
 import { StorageKeys } from '../core/constants/storage-keys.constant';
 import { ConfigService } from '../core/services/config.service';
 import { NavigationService } from '../core/services/navigation.service';
+import { SKIP_ERROR_TOAST } from '../core/http/http-context';
 
 /**
  * Handles HTTP errors globally.
@@ -35,7 +36,10 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         err.message ??
         'An unexpected error occurred.';
 
-      if (err.status !== 0) toastr.error(message, `Error ${err.status}`);
+      // Best-effort requests opt out of the toast — they handle failure themselves.
+      if (err.status !== 0 && !req.context.get(SKIP_ERROR_TOAST)) {
+        toastr.error(message, `Error ${err.status}`);
+      }
 
       return throwError(() => err);
     })

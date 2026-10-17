@@ -1,4 +1,4 @@
-:host { display: flex; flex-direction: column; flex: 1; overflow-y: auto; }
+:host { display: flex; flex-direction: column; flex: 1; overflow-y: auto; overflow-x: hidden; min-width: 0; }
 
 .bubble-list {
   display: flex;
@@ -38,6 +38,10 @@
   align-items: flex-end;
   gap: 8px;
   padding: 1px 16px;
+  min-width: 0;       // children (incl. code blocks) must shrink, not widen the row
+  box-sizing: border-box;
+  // NOTE: no overflow clipping here — the floating react/more toolbar sits above the bubble and
+  // must not be cut off. Horizontal overflow is contained on the scroll host instead.
 }
 .bubble-row-first    { padding-top: 10px; }
 .bubble-row-continued { padding-top: 1px; }
@@ -86,6 +90,7 @@
 .bub-header-me { flex-direction: row-reverse; }
 .bub-author    { font-size: 0.78rem; font-weight: 600; color: var(--text-primary); }
 .bub-author-me { color: var(--text-secondary); }
+.bub-status-emoji { font-size: 0.78rem; line-height: 1; cursor: default; }
 .bub-ts        { font-size: 0.65rem; color: var(--text-muted); }
 
 /* ── The bubble itself ────────────────────────────────────────────────── */
@@ -214,11 +219,9 @@
    [innerHTML], so it never receives this component's view-encapsulation attribute — scoped rules
    would silently not match (which is why code blocks did not scroll). Keep them global. */
 
-/* ── Reactions ─────────────────────────────────────────────────────────────── */
-.bub-reactions { position: relative; align-items: center; }
-/* Only the hover add-button: take no space, so messages without reactions keep their spacing. */
-.bub-reactions-empty { height: 0; margin-top: 0; }
-
+/* ── Reaction chips (under the bubble) ─────────────────────────────────────── */
+.bub-reactions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
+.bub-reactions-me { justify-content: flex-end; }
 .reaction-chip {
   cursor: pointer;
   font: inherit;
@@ -232,60 +235,8 @@
   background: var(--accent-soft);
   border-color: var(--accent-text);
 }
-.reaction-emoji { font-size: 0.85rem; }
-.reaction-count { font-variant-numeric: tabular-nums; }
-
-.reaction-add-wrap {
-  position: relative;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-.bub-reactions-empty .reaction-add-wrap { position: absolute; top: 2px; left: 0; }
-.bub-reactions-me.bub-reactions-empty .reaction-add-wrap { left: auto; right: 0; }
-/* Visible while hovering the message row, or while its picker is open. */
-.bubble-row:hover .reaction-add-wrap,
-.reaction-add-wrap.reaction-add-open { opacity: 1; }
-
-.reaction-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 22px;
-  padding: 0;
-  border-radius: 999px;
-  color: var(--text-muted);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  cursor: pointer;
-}
-.reaction-add:hover { color: var(--accent-text); border-color: var(--accent-text); }
-
-.reaction-picker {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 0;
-  z-index: 15;
-  display: flex;
-  gap: 2px;
-  padding: 4px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.18);
-}
-.bub-reactions-me .reaction-picker { left: auto; right: 0; }
-.reaction-pick {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  font-size: 1.05rem;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  cursor: pointer;
-}
-.reaction-pick:hover { background: var(--bg-hover); }
+.reaction-emoji { font-size: 0.78rem; }
+.reaction-count { font-variant-numeric: tabular-nums; font-size: 0.68rem; }
 
 /* ── Deleted tombstone ─────────────────────────────────────────────────────── */
 .bubble-deleted {
@@ -296,31 +247,136 @@
 }
 .bubble-deleted .deleted-note { font-size: 0.82rem; }
 
-/* ── Edit / delete actions (hover) ─────────────────────────────────────────── */
-.msg-actions {
+/* ── Floating hover toolbar (react + more), Slack-style ────────────────────── */
+.bubble-wrap { position: relative; width: fit-content; max-width: 100%; }
+.bubble-wrap-me { margin-left: auto; } // keep own bubbles flush right
+
+.msg-toolbar {
+  position: absolute;
+  top: -14px;                 // half-tuck onto the bubble's top edge (overlaps ~50%)
+  right: 6px;
+  z-index: 14;
   display: inline-flex;
-  gap: 2px;
-  margin-top: 2px;
+  align-items: center;
+  gap: 1px;
+  padding: 1px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: 0 1px 5px rgb(0 0 0 / 0.14);
   opacity: 0;
-  transition: opacity 0.12s;
+  transform: translateY(2px);
+  transition: opacity 0.1s, transform 0.1s;
+  pointer-events: none;       // hidden until the row is hovered
 }
-.msg-actions-me { justify-content: flex-end; }
-.bubble-row:hover .msg-actions { opacity: 1; }
-.msg-action {
+// Invisible hover bridge below the toolbar so the cursor can travel down into an open
+// picker/menu without crossing a dead gap (which used to dismiss it).
+.msg-toolbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 8px;
+}
+// Own messages sit on the right; put the toolbar on the left edge so it does not run off-screen.
+.bubble-wrap-me .msg-toolbar { right: auto; left: 6px; }
+// Show on row hover, or keep shown while a popover (picker/menu) is open.
+.bubble-row:hover .msg-toolbar,
+.msg-toolbar-open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.tb-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 22px;
   padding: 0;
+  font-size: 0.8rem;
+  line-height: 1;
   color: var(--text-muted);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
   cursor: pointer;
 }
-.msg-action:hover { color: var(--accent-text); border-color: var(--accent-text); }
-.msg-action-danger:hover { color: var(--danger); border-color: var(--danger); }
+.tb-btn svg { width: 13px; height: 13px; }
+.tb-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tb-emoji { font-size: 0.85rem; }
+
+.tb-pop-wrap { position: relative; display: inline-flex; }
+
+/* ── Emoji quick-picker popover ────────────────────────────────────────────── */
+.reaction-picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  z-index: 16;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.18);
+}
+.bubble-wrap-me .reaction-picker { left: auto; right: 0; }
+.reaction-pick {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+.reaction-pick:hover { background: var(--bg-hover); }
+
+/* ── More-actions context menu (compact) ───────────────────────────────────── */
+/* The scroll host clips horizontal overflow, so the menu must open toward the open chat area
+   (screen-centre), never toward the panel edge where it would be cut:
+   - received (left) messages → open rightward (align left edge to the … button)
+   - own (right) messages     → open leftward  (align right edge to the … button) */
+.msg-menu {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: auto;
+  z-index: 17;
+  display: flex;
+  flex-direction: column;
+  min-width: 128px;
+  padding: 3px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.16);
+}
+.bubble-wrap-me .msg-menu { left: auto; right: 0; }
+.msg-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.msg-menu-item svg { width: 13px; height: 13px; flex-shrink: 0; }
+.msg-menu-item:hover { background: var(--bg-hover); }
+.msg-menu-item-danger { color: var(--danger); }
+.msg-menu-item-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
 /* ── Inline edit box ───────────────────────────────────────────────────────── */
 .msg-edit {
@@ -351,3 +407,46 @@
 .msg-edit-cancel { color: var(--text-secondary); background: transparent; border: 1px solid var(--border); }
 .msg-edit-save   { color: var(--accent-contrast); background: var(--accent); border: 1px solid var(--accent); }
 .msg-edit-hint   { font-size: 0.7rem; color: var(--text-muted); }
+
+/* ── Thread summary link ───────────────────────────────────────────────────── */
+.thread-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 3px 8px 3px 6px;
+  font-size: 0.78rem;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.thread-link:hover { border-color: var(--accent-text); }
+.thread-link-me { align-self: flex-end; }
+.thread-count { font-weight: 600; }
+.thread-last { color: var(--text-muted); font-weight: 400; }
+
+/* ── Quote-reply + forwarded ──────────────────────────────────────────────── */
+.msg-forwarded {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-bottom: 2px;
+  font-size: 0.72rem; font-style: italic; color: var(--text-muted);
+}
+.msg-quote {
+  display: flex; flex-direction: column; gap: 1px;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 4px 8px;
+  text-align: left;
+  border-left: 3px solid var(--accent-text);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent-text) 8%, transparent);
+  cursor: pointer;
+}
+.msg-quote:hover { background: color-mix(in srgb, var(--accent-text) 14%, transparent); }
+.msg-quote-author { font-size: 0.72rem; font-weight: 600; color: var(--accent-text); }
+.msg-quote-body { font-size: 0.78rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Pinned tag ────────────────────────────────────────────────────────────── */

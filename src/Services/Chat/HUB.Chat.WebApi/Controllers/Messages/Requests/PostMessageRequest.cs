@@ -13,4 +13,5 @@ public sealed record PostMessageRequest(
     MessageFormat Format,
     Guid? ParentId,
     IReadOnlyList<Guid>? MentionedUserIds,
-    Guid? ClientMessageId = null);
+    Guid? ClientMessageId = null,
+    Guid? ReplyToId = null);

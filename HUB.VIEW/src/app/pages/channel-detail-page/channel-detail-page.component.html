@@ -52,6 +52,20 @@
           {{ ch.memberCount }}
         </button>
 
+        <!-- Pinned messages — opens a dialog listing this channel's pins -->
+        @if (pinnedMessages().length) {
+          <button
+            class="icon-btn icon-btn-badge"
+            [class.is-active]="pinnedOpen()"
+            (click)="pinnedOpen.set(true)"
+            title="Pinned messages">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.5-4.5V5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7.5L5 17z"/>
+            </svg>
+            <span class="icon-badge">{{ pinnedMessages().length }}</span>
+          </button>
+        }
+
         <!-- Search toggle -->
         <button
           class="icon-btn"
@@ -70,7 +84,7 @@
           (click)="openInfo('about')"
           title="Channel details">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
-            <circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>
+            <circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>
           </svg>
         </button>
       </div>
@@ -108,6 +122,7 @@
 
     <!-- Main chat area — always shows ALL messages so scroll-to-message works -->
     <div class="message-area">
+
       @if (loading()) {
         <div class="flex-1 flex items-center justify-center"><div class="spinner"></div></div>
       } @else {
@@ -122,6 +137,11 @@
           (toggleReaction)="onToggleReaction($event)"
           (editMessage)="onEditMessage($event)"
           (deleteMessage)="onDeleteMessage($event)"
+          [messagesById]="messagesById()"
+          (openThread)="openThread($event)"
+          (replyToMessage)="startReply($event)"
+          (forwardMessage)="startForward($event)"
+          (togglePin)="onTogglePin($event)"
           (loadMore)="loadMore()"
           class="flex-1 overflow-y-auto" />
       }
@@ -131,8 +151,20 @@
         [currentUserId]="currentUserId()" />
 
       @if (canPost()) {
+        @if (replyingTo(); as r) {
+          <div class="reply-bar">
+            <div class="reply-bar-text">
+              <span class="reply-bar-label">Replying to {{ authorName(r.authorId) }}</span>
+              <span class="reply-bar-body">{{ shortPreview(r) }}</span>
+            </div>
+            <button type="button" class="reply-bar-close" (click)="cancelReply()" aria-label="Cancel reply">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        }
         <app-message-input
           [channelName]="channelTitle()"
+          [channelId]="channelId"
           [mentionCandidates]="mentionCandidates()"
           (send)="sendMessage($event)"
           (typing)="onTyping()"
@@ -196,7 +228,90 @@
 
     }
 
+    <!-- Thread panel (opens beside the chat on "N replies") -->
+    @if (threadRoot(); as root) {
+      <app-thread-panel
+        [root]="root"
+        [channelId]="channelId"
+        [currentUserId]="currentUserId()"
+        [canPost]="canPost()"
+        [canModerate]="canModerate()"
+        [channelName]="channelTitle()"
+        (close)="threadRoot.set(null)"
+        (replyCountChanged)="onReplyCountChanged($event)" />
+    }
+
   </div>
+
+  <!-- ── Forward dialog ────────────────────────────────────────────────────── -->
+  @if (forwarding(); as src) {
+    <div class="fwd-overlay" (click)="forwarding.set(null)">
+      <div class="fwd-dialog" (click)="$event.stopPropagation()">
+        <header class="fwd-header">
+          <span>Forward message</span>
+          <button type="button" class="fwd-close" (click)="forwarding.set(null)" aria-label="Close">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </header>
+        <div class="fwd-preview">
+          <span class="fwd-preview-author">{{ authorName(src.authorId) }}</span>
+          <span class="fwd-preview-body">{{ shortPreview(src) }}</span>
+        </div>
+        <p class="fwd-label">Forward to…</p>
+        <div class="fwd-list">
+          @for (c of forwardTargets(); track c.id) {
+            <button type="button" class="fwd-target" (click)="doForward(c.id)">
+              <span class="fwd-target-icon"
+                    [class.fwd-target-icon--dm]="c.type === ChannelType.Dm || c.type === ChannelType.GroupDm">
+                @if (c.type === ChannelType.Dm || c.type === ChannelType.GroupDm) {
+                  {{ targetLabel(c).charAt(0).toUpperCase() }}
+                } @else {
+                  #
+                }
+              </span>
+              <span class="fwd-target-name">{{ targetLabel(c) }}</span>
+            </button>
+          } @empty {
+            <p class="fwd-empty">No other channels to forward to.</p>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ── Pinned messages dialog ────────────────────────────────────────────── -->
+  @if (pinnedOpen()) {
+    <div class="fwd-overlay" (click)="pinnedOpen.set(false)">
+      <div class="fwd-dialog" (click)="$event.stopPropagation()">
+        <header class="fwd-header">
+          <span>Pinned messages</span>
+          <button type="button" class="fwd-close" (click)="pinnedOpen.set(false)" aria-label="Close">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </header>
+        <div class="pin-dlg-list">
+          @for (p of pinnedMessages(); track p.id) {
+            <div class="pin-dlg-item">
+              <button type="button" class="pin-dlg-main" (click)="jumpToPinned(p.id)">
+                <div class="pin-dlg-top">
+                  <span class="pin-dlg-author">{{ authorName(p.authorId) }}</span>
+                  <span class="pin-dlg-time">{{ p.createdAt | date:'MMM d, HH:mm' }}</span>
+                </div>
+                <p class="pin-dlg-body">{{ shortPreview(p) }}</p>
+              </button>
+              @if (canPost()) {
+                <button type="button" class="pin-dlg-unpin" (click)="unpinFromBar(p.id)" title="Unpin" aria-label="Unpin">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              }
+            </div>
+          } @empty {
+            <p class="fwd-empty">No pinned messages yet.</p>
+          }
+        </div>
+      </div>
+    </div>
+  }
 
   <!-- ── Channel info modal ("…") ──────────────────────────────────────────── -->
   @if (infoOpen() && channel(); as ch) {
@@ -211,7 +326,8 @@
       (left)="onChannelLeft()"
       (joined)="onChannelJoined()"
       (visibilityChanged)="onVisibilityChanged($event)"
-      (ownershipTransferred)="onOwnershipTransferred()" />
+      (ownershipTransferred)="onOwnershipTransferred()"
+      (archivedChanged)="onArchivedChanged($event)" />
   }
 
  }

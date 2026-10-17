@@ -42,6 +42,10 @@ public sealed class MessageConfiguration : IEntityTypeConfiguration<Message>
         builder.HasIndex(m => new { m.ChannelId, m.CreatedAt });
         builder.HasIndex(m => m.ParentId);
 
+        // List pinned messages per channel without scanning the table.
+        builder.HasIndex(m => new { m.ChannelId, m.PinnedAt })
+            .HasFilter("\"PinnedAt\" IS NOT NULL");
+
         // Idempotent send: one message per (author, client key). Filtered so legacy rows / clients that
         // send no key (NULL) never collide. Concurrent retries race on this index, not on a read.
         builder.HasIndex(m => new { m.AuthorId, m.ClientMessageId })

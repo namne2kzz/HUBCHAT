@@ -22,13 +22,14 @@ import { DirectoryUser, UserMemberships } from '../models/directory.model';
 import { NotificationDto, NotificationType } from '../models/notification.model';
 import { CreateChannelDialogComponent } from '../components/create-channel-dialog/create-channel-dialog.component';
 import { ConfirmDialogComponent } from '../components/confirm-dialog/confirm-dialog.component';
+import { CustomStatusDialogComponent } from '../components/custom-status-dialog/custom-status-dialog.component';
 
 export type SideTab = 'channels' | 'notifications' | 'settings';
 
 @Component({
   selector: 'app-shell-layout',
   standalone: true,
-  imports: [RouterOutlet, CreateChannelDialogComponent, ConfirmDialogComponent, DatePipe, NgClass],
+  imports: [RouterOutlet, CreateChannelDialogComponent, ConfirmDialogComponent, CustomStatusDialogComponent, DatePipe, NgClass],
   templateUrl: './shell-layout.component.html',
   styleUrl: './shell-layout.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -229,20 +230,6 @@ export class ShellLayoutComponent implements OnInit {
   });
 
   /**
-   * Org members who are currently online AND don't already have a DM (those surface in the
-   * Direct Messages list instead, sorted online-first). Excludes self.
-   */
-  readonly onlinePeople = computed(() => {
-    const selfId  = this.auth.currentUser()?.id ?? '';
-    const dmNames = new Set(this.dmChannels().map(c => c.name.toLowerCase()));
-    return this.workspaceMembers()
-      .filter(u => u.id !== selfId && !u.isDeleted
-                && this.presence.getStatus(u.id) === 'Online'
-                && !dmNames.has(u.name.toLowerCase()))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  });
-
-  /**
    * The other participant's user id for a DM channel (from the server's OtherUserId),
    * used to key presence and resolve the display name.
    * @param ch DM channel.
@@ -289,6 +276,10 @@ export class ShellLayoutComponent implements OnInit {
     this.notification.list().subscribe();
     this.resolveWorkspace();
     this.subscribeRealtimeEvents();
+
+    // Load the current user's own custom status (CF-19) so it shows after a reload, not just after a set.
+    const selfId = this.auth.currentUser()?.id;
+    if (selfId) this.presence.fetchCustomStatuses([selfId]).subscribe();
   }
 
   // ── Tab navigation ────────────────────────────────────────────────────────
@@ -369,9 +360,31 @@ export class ShellLayoutComponent implements OnInit {
   protected typeLabel(type: NotificationType): string {
     switch (type) {
       case NotificationType.Mention:       return 'Mention';
-      case NotificationType.DirectMessage: return 'DM';
+      case NotificationType.DirectMessage: return 'Direct message';
       default:                             return 'System';
     }
+  }
+
+  /** Emoji icon for a notification type (shown in the row's icon chip). @param type Notification type. */
+  protected typeIcon(type: NotificationType): string {
+    switch (type) {
+      case NotificationType.Mention:       return '@';
+      case NotificationType.DirectMessage: return '✉️';
+      default:                             return '🔔';
+    }
+  }
+
+  /**
+   * Where a notification came from — "#channel", a DM partner's name, or '' when unknown — so the user
+   * can tell a mention in a busy channel apart from one in a DM.
+   * @param n The notification.
+   * @returns A short source label, or '' when the channel isn't known locally.
+   */
+  protected notifWhere(n: NotificationDto): string {
+    if (!n.channelId) return '';
+    const ch = this.channels().find(c => c.id === n.channelId);
+    if (!ch) return '';
+    return (ch.type === ChannelType.Dm || ch.type === ChannelType.GroupDm) ? this.dmName(ch) : `#${ch.name}`;
   }
 
   /**
@@ -406,6 +419,21 @@ export class ShellLayoutComponent implements OnInit {
   /** Sets the current user's presence status. @param status Chosen status. */
   protected setStatus(status: UserStatus): void { this.settings.setStatus(status); }
 
+  // ── Custom status (CF-19) ─────────────────────────────────────────────────
+  /** Whether the "Set a status" dialog is open. */
+  protected readonly customStatusOpen = signal(false);
+
+  /** The current user's live custom status (emoji + note), or null when none/expired. */
+  protected readonly myCustomStatus = computed(() => {
+    const id = this.auth.currentUser()?.id;
+    return id ? this.presence.getCustomStatus(id) : null;
+  });
+
+  /** Clears the current user's custom status without opening the dialog. */
+  protected async clearCustomStatus(): Promise<void> {
+    await this.presence.setCustomStatus('', '', null);
+  }
+
   /**
    * Presence-dot modifier class for ANOTHER user, reflecting their live status.
    * Online → green, Away → orange, Do Not Disturb → red, otherwise grey (offline).
@@ -428,6 +456,11 @@ export class ShellLayoutComponent implements OnInit {
   /** Updates a quiet-hours boundary time. @param field Which end. @param event Time input event. */
   protected onQuietTime(field: 'start' | 'end', event: Event): void {
     this.settings.setQuietHours({ [field]: (event.target as HTMLInputElement).value });
+  }
+
+  /** Toggles "only notify for @mentions while muted". @param event Checkbox event. */
+  protected onOnlyMentionedToggle(event: Event): void {
+    this.settings.setOnlyWhenMentioned((event.target as HTMLInputElement).checked);
   }
 
   /** Presence-dot modifier class for the current user's own status (drives the rail avatar dot). */
@@ -567,13 +600,23 @@ export class ShellLayoutComponent implements OnInit {
         const isActive = chId === this.channelSvc.selectedId();
         if (!isActive && e.authorId !== this.auth.currentUser()?.id) {
           this.unreadMap.update(m => ({ ...m, [chId]: (m[chId] ?? 0) + 1 }));
-          if (!this.settings.muted()) this.playBeep(); // silenced by Do Not Disturb / quiet hours
+          // Mute silences the beep, unless "only when mentioned" is on and this message @mentions me.
+          const mentionsMe = (e.mentions ?? []).includes(this.auth.currentUser()?.id ?? '');
+          if (this.settings.shouldNotify(mentionsMe)) this.playBeep();
         }
       });
 
     this.realtime.notificationReceived$
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(e => this.notification.onRealtimeReceived(e.notification));
+      .subscribe(e => {
+        // Respect the mute / "only when mentioned" preference: when muted and the toggle is off, a
+        // notification must not surface at all (no badge, no panel entry). Mention & DM survive the
+        // toggle; System never does while muted.
+        const n = e.notification;
+        const isMentionLike = n.type === NotificationType.Mention || n.type === NotificationType.DirectMessage;
+        if (!this.settings.shouldSurfaceNotification(isMentionLike)) return;
+        this.notification.onRealtimeReceived(n);
+      });
 
     // Sidebar typing indicators — track other users typing per channel (auto-expire).
     this.realtime.typingStarted$

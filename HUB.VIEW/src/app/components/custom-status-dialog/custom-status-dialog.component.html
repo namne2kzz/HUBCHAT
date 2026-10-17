@@ -1,0 +1,54 @@
+<div class="cs-backdrop" (click)="close.emit()"></div>
+
+<div class="cs-dialog" role="dialog" aria-modal="true" aria-label="Set a status">
+  <header class="cs-head">
+    <span class="cs-title">Set a status</span>
+    <button type="button" class="cs-close" (click)="close.emit()" aria-label="Close">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </header>
+
+  <!-- Emoji + note, Slack-style single row -->
+  <div class="cs-row">
+    <input class="cs-emoji" [value]="emoji()" (input)="onEmojiInput($event)"
+           maxlength="4" aria-label="Status emoji" />
+    <input class="cs-text" [value]="text()" (input)="onTextInput($event)"
+           placeholder="What's your status?" maxlength="100" aria-label="Status message" autofocus />
+  </div>
+
+  <!-- Emoji palette -->
+  <div class="cs-palette">
+    @for (e of emojiPalette; track e) {
+      <button type="button" class="cs-palette-btn" [class.is-selected]="emoji() === e"
+              (click)="emoji.set(e)" [attr.aria-label]="'Pick ' + e">{{ e }}</button>
+    }
+  </div>
+
+  <!-- One-tap presets -->
+  <p class="cs-label">Suggestions</p>
+  <div class="cs-presets">
+    @for (p of presets; track p.text) {
+      <button type="button" class="cs-preset" (click)="applyPreset(p)">
+        <span class="cs-preset-emoji">{{ p.emoji }}</span>
+        <span class="cs-preset-text">{{ p.text }}</span>
+      </button>
+    }
+  </div>
+
+  <!-- Clear-after -->
+  <label class="cs-clear">
+    <span class="cs-label">Clear after</span>
+    <select class="cs-select" (change)="onClearChange($event)">
+      @for (o of clearOptions; track o.label) {
+        <option [value]="o.minutes === null ? 'null' : o.minutes" [selected]="clearAfterMin() === o.minutes">{{ o.label }}</option>
+      }
+    </select>
+  </label>
+
+  <footer class="cs-foot">
+    <button type="button" class="cs-ghost" (click)="clear()" [disabled]="saving()">Clear status</button>
+    <button type="button" class="cs-save" (click)="save()" [disabled]="saving() || !canSave()">
+      {{ saving() ? 'Saving…' : 'Save' }}
+    </button>
+  </footer>
+</div>

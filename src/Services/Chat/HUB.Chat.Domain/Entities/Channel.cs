@@ -181,11 +181,24 @@ public sealed class Channel : AggregateRoot
         Touch();
     }
 
-    /// <summary>Archives the channel.</summary>
-    public void Archive()
+    /// <summary>Archives the channel (read-only; no new messages). Idempotent.</summary>
+    /// <returns>True when this call archived it; false when already archived.</returns>
+    public bool Archive()
     {
+        if (IsArchived) return false;
         IsArchived = true;
         Touch();
+        return true;
+    }
+
+    /// <summary>Reopens an archived channel. Idempotent.</summary>
+    /// <returns>True when this call reopened it; false when it was not archived.</returns>
+    public bool Unarchive()
+    {
+        if (!IsArchived) return false;
+        IsArchived = false;
+        Touch();
+        return true;
     }
 
     /// <summary>Links this channel to a DASHBOARD resource (idempotent for the same resource).</summary>

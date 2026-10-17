@@ -4,6 +4,9 @@
 
 | Ngày | Giờ | Title | Thay đổi |
 |------|-----|-------|----------|
+| 2026-10-14 | — | Draft giữ khi đổi kênh (CF-17) | Thuần FE: composer lưu bản nháp per-kênh vào `localStorage` (`hub.draft.{channelId}`), restore khi quay lại kênh, xoá khi gửi. **Không** đẩy server — draft là tiện ích per-browser, không phải dữ liệu domain (không sync đa thiết bị, mất khi clear site-data là chấp nhận được). Không đổi API/event/rule. |
+| 2026-10-14 | — | Quote-reply + Forward (CF-7) | PostMessage nhận `ReplyToId` (trích 1 tin, vẫn là tin top-level + ô preview, bấm nhảy tới gốc). `POST /messages/{id}/forward` (TargetChannelId) — copy body sang kênh đích, ghi `ForwardedFromId`; chặn nếu không đọc được nguồn / không là member đích / nguồn đã xoá. UI: menu Reply (→ reply-bar trên composer) + Forward (→ dialog chọn kênh); hiện ô quote + nhãn "Forwarded". |
+| 2026-10-14 | — | Thread / trả lời theo luồng (CF-6) | `GET /channels/{id}/messages/{messageId}/replies` (reply của 1 tin gốc, cũ→mới); list kênh trả thêm `ReplyCount` + `LastReplyAt` cho tin top-level (tin xoá không tính). Reply = message có `ParentId`; realtime dùng lại `MessageSent` (đã mang ParentId). UI: dòng "N replies" dưới tin → mở **thread panel** bên phải (tin gốc + reply + composer gửi reply). |
 | 2026-10-11 | — | Sửa / xoá tin (CF-4) | PATCH `/messages/{id}` (sửa, tác giả, trong 24h) → `MessageEdited`; DELETE `/messages/{id}` (tác giả trong 24h HOẶC Owner/Admin/ManageChannels, không giới hạn giờ) → `MessageDeleted`, soft-delete thành **tombstone**. List vẫn trả tin đã xoá nhưng body rỗng + `IsDeleted`; unread không tính tin đã xoá. Realtime push `messageEdited`/`messageDeleted` (sửa lại tên camelCase — trước PascalCase nên FE không nhận). UI: hover hiện nút sửa/xoá, sửa inline (Enter lưu/Esc huỷ), xoá có confirm, optimistic. |
 | 2026-10-10 | — | @mention từ UI + lọc mention phía server | Composer: gõ `@` → gợi ý thành viên kênh (↑/↓, Enter/Tab, Esc), gửi `mentionedUserIds` (chỉ người còn `@Tên` trong nội dung). Server: kênh private/DM chỉ giữ mention là **member** (chặn lộ preview nội dung kênh private qua notification); không báo khi tự mention; tối đa 50 mention/tin. |
 | 2026-10-08 | — | Realtime push message đầy đủ (MP-5B) | `MessageSent` mang thêm `Body`, `Format`, `ParentId`, `CreatedAt` (tuỳ chọn, cuối record — tương thích event cũ). Người nhận thấy đúng message (đủ độ dài, render markdown) ngay, không còn bản rút gọn 140 ký tự. Reply trong thread không còn lọt vào timeline chính qua realtime. |
@@ -33,7 +36,8 @@ Tin nhắn trong kênh: top-level hoặc thread reply, hỗ trợ mention, edit,
 ## Main Workflows
 1. **Post**: `POST /api/v1/channels/{channelId}/messages` (Body, Format, ParentId?, MentionedUserIds, ClientMessageId?) → lưu + outbox publish `MessageSent` (+ `UserMentioned` per mention) → realtime fan-out.
 3. **Catch-up**: `GET /api/v1/channels/{channelId}/messages/after/{messageId}?limit=` → message top-level (chưa xoá) **mới hơn** mốc, cũ→mới, tối đa 100; client lặp với id cuối tới khi nhận ít hơn `limit`. Mốc không thuộc kênh → 404 (client tải lại). Cùng quyền đọc như List.
-2. **List**: `GET /api/v1/channels/{channelId}/messages?cursor=&limit=` → top-level (`ParentId=null`, chưa xoá), **keyset pagination** newest-first, kèm reactions.
+2. **List**: `GET /api/v1/channels/{channelId}/messages?cursor=&limit=` → top-level. Mỗi tin top-level kèm `ReplyCount`/`LastReplyAt` (summary thread).
+5. **Thread**: `GET /api/v1/channels/{channelId}/messages/{messageId}/replies` → reply (ParentId = tin gốc), cũ→mới, cùng quyền đọc. Gửi reply = PostMessage với `ParentId`. (`ParentId=null`, chưa xoá), **keyset pagination** newest-first, kèm reactions.
 
 ## Definition of Done
 - [ ] Membership + writable check trước khi post (ForbiddenException/DomainException).

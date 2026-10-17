@@ -1,8 +1,9 @@
 import {
-  ChangeDetectionStrategy, Component, computed, ElementRef, input, output, signal, viewChild,
+  ChangeDetectionStrategy, Component, computed, effect, ElementRef, inject, input, output, signal, viewChild,
 } from '@angular/core';
 import { MessageFormat } from '../../models/message.model';
 import { DirectoryUser } from '../../models/directory.model';
+import { DraftStoreService } from '../../services/draft-store.service';
 import {
   collectMentionIds, filterMentionCandidates, findMentionQuery, MentionQuery, PickedMention,
 } from '../../utils/mention.util';
@@ -40,8 +41,36 @@ export interface ComposerSubmit {
 })
 export class MessageInputComponent {
   readonly channelName = input<string>('');
+  /** Channel whose draft this composer owns; drives save/restore of the in-progress message (CF-17). */
+  readonly channelId = input<string>('');
   /** Users offered in the @mention list (the page passes channel members, minus the current user). */
   readonly mentionCandidates = input<DirectoryUser[]>([]);
+
+  private readonly drafts = inject(DraftStoreService);
+
+  /** Last channel id this composer restored a draft for; guards the restore effect against re-runs. */
+  private restoredFor = '';
+
+  constructor() {
+    // Restore the draft when the composer switches channels. Only channelId() is read, so this runs
+    // on a channel change — not on every keystroke (drafts are saved in onInput/pickMention instead).
+    effect(() => {
+      const id = this.channelId();
+      if (id === this.restoredFor) return;
+      this.restoredFor = id;
+      this.body.set(this.drafts.get(id));
+      this.codeMode.set(false);
+      this.codeLang.set('');
+      this.picked.set([]);
+      this.mentionQuery.set(null);
+      this.limitHit.set(false);
+    });
+  }
+
+  /** Persists the current body as this channel's draft (best-effort). */
+  private saveDraft(): void {
+    this.drafts.set(this.channelId(), this.body());
+  }
 
   /** Emits the composed message (Markdown) when the user sends. */
   readonly send = output<ComposerSubmit>();
@@ -96,6 +125,7 @@ export class MessageInputComponent {
     }
     this.body.set(value);
     this.updateMentionQuery(el);
+    this.saveDraft();
   }
 
   /** Re-reads the @query at the caret (never inside a code block). */
@@ -179,6 +209,7 @@ export class MessageInputComponent {
       this.limitHit.set(true);
     }
     this.body.set(value);
+    this.saveDraft();
   }
 
   /** Wraps the current selection with Markdown markers, keeping the selection. */
@@ -241,5 +272,6 @@ export class MessageInputComponent {
     this.codeMode.set(false);
     this.codeLang.set('');
     this.limitHit.set(false);
+    this.drafts.clear(this.channelId()); // the message is sent — the draft is spent
   }
 }

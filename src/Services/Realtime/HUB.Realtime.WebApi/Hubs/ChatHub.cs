@@ -90,6 +90,36 @@ public sealed class ChatHub(IPresenceStore presence, IChannelAccessService chann
         await Clients.All.SendAsync("presenceChanged", new { userId = uid, status = effective.ToString() });
     }
 
+    /// <summary>Maximum length of a custom status note; longer text is truncated.</summary>
+    private const int CustomStatusMaxLen = 100;
+
+    /// <summary>
+    /// Sets (or clears) the caller's custom status and broadcasts it to everyone (CF-19).
+    /// Empty emoji+text clears. An expiry in the past also clears.
+    /// </summary>
+    /// <param name="emoji">A single emoji, or empty.</param>
+    /// <param name="text">The status note; truncated to 100 chars.</param>
+    /// <param name="expiresAtUnixMs">Auto-clear time in Unix ms, or null for "don't clear".</param>
+    public async Task SetCustomStatus(string? emoji, string? text, long? expiresAtUnixMs)
+    {
+        if (CurrentUserId() is not { } uid) return;
+
+        var trimmedText = (text ?? string.Empty).Trim();
+        if (trimmedText.Length > CustomStatusMaxLen) trimmedText = trimmedText[..CustomStatusMaxLen];
+        var expires = expiresAtUnixMs is { } ms ? DateTimeOffset.FromUnixTimeMilliseconds(ms) : (DateTimeOffset?)null;
+
+        var stored = await presence.SetCustomStatusAsync(
+            uid, new CustomStatus((emoji ?? string.Empty).Trim(), trimmedText, expires), Context.ConnectionAborted);
+
+        await Clients.All.SendAsync("customStatusChanged", new
+        {
+            userId = uid,
+            emoji = stored?.Emoji ?? string.Empty,
+            text = stored?.Text ?? string.Empty,
+            expiresAt = stored?.ExpiresAt?.ToString("o"),
+        });
+    }
+
     private Guid? CurrentUserId()
     {
         var raw = Context.User?.FindFirstValue("uid") ?? Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);

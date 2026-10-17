@@ -26,4 +26,21 @@ public interface IPresenceStore
 
     /// <summary>Gets current status for a set of users.</summary>
     Task<IReadOnlyDictionary<Guid, PresenceStatus>> GetStatusesAsync(IReadOnlyCollection<Guid> userIds, CancellationToken ct);
+
+    /// <summary>
+    /// Sets the caller's custom status (CF-19). An empty <see cref="CustomStatus.Text"/> and emoji clears it.
+    /// When <see cref="CustomStatus.ExpiresAt"/> is in the future the status auto-clears at that time.
+    /// </summary>
+    /// <param name="userId">The user.</param>
+    /// <param name="status">The desired custom status; empty text+emoji clears.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The stored status, or null when it was cleared (or already expired).</returns>
+    Task<CustomStatus?> SetCustomStatusAsync(Guid userId, CustomStatus status, CancellationToken ct);
+
+    /// <summary>Gets the current (non-expired) custom status for a set of users (CF-19).</summary>
+    /// <param name="userIds">Users to read.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A map of user id → custom status, omitting users with none.</returns>
+    Task<IReadOnlyDictionary<Guid, CustomStatus>> GetCustomStatusesAsync(
+        IReadOnlyCollection<Guid> userIds, CancellationToken ct);
 }

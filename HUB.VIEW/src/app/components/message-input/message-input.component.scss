@@ -92,13 +92,17 @@
   position: relative; // anchors the @mention list
   display: flex;
   align-items: flex-end;
-  gap: 6px;
-  padding: 4px;
+  gap: 8px;
+  // The component zeroes .composer-box padding (so the toolbar meets the top edge), which also removed
+  // the box's own breathing room — restore it here so text and the send button are not flush to the frame.
+  padding: 8px 10px 10px;
 }
 .composer-input {
   flex: 1;
   min-width: 0;
   max-height: 40vh;
+  // Vertically centre the single-line text against the 34px send button.
+  padding: 6px 0;
 }
 .composer-input.mono {
   font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;

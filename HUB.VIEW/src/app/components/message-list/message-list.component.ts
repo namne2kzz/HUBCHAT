@@ -8,6 +8,8 @@ import { MESSAGE_EDIT_WINDOW_MS } from '../../utils/message-edit.util';
 import { DirectoryUser } from '../../models/directory.model';
 import { MentionLabel, renderMarkdown } from '../../utils/markdown.util';
 import { groupReactions } from '../../utils/reaction.util';
+import { ConfirmDialogService } from '../../services/confirm-dialog.service';
+import { PresenceService } from '../../services/presence.service';
 
 interface MessageRow {
   msg: MessageDto;
@@ -29,6 +31,12 @@ interface MessageRow {
   canEdit: boolean;
   /** True when the viewer may delete it (author within window, or a moderator). */
   canDelete: boolean;
+  /** The message this one quote-replies to (resolved from messagesById); null if none/unresolved. */
+  quoted: MessageDto | null;
+  /** True when this message was forwarded from elsewhere. */
+  forwarded: boolean;
+  /** True when the message is pinned. */
+  isPinned: boolean;
   /** Message body rendered from Markdown to safe HTML. */
   html: string;
 }
@@ -48,6 +56,8 @@ interface MessageRow {
 })
 export class MessageListComponent {
   private readonly document = inject(DOCUMENT);
+  private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly presence = inject(PresenceService);
   private readonly host     = inject(ElementRef<HTMLElement>);
 
   /** Whether the view is scrolled to (near) the bottom. Drives auto-follow + the scroll-down button. */
@@ -115,6 +125,8 @@ export class MessageListComponent {
   readonly canReact = input<boolean>(false);
   /** Whether the viewer may moderate (delete anyone's message) — Owner/Admin or ManageChannels. */
   readonly canModerate = input<boolean>(false);
+  /** All messages keyed by id, so a quote-reply can show a preview of the quoted message. */
+  readonly messagesById = input<Record<string, MessageDto>>({});
 
   /** Emits when older messages are requested. */
   readonly loadMore = output<void>();
@@ -124,6 +136,14 @@ export class MessageListComponent {
   readonly editMessage = output<{ messageId: string; body: string }>();
   /** Emits the message id when the viewer deletes a message. */
   readonly deleteMessage = output<string>();
+  /** Emits the top-level message id when the viewer opens its thread. */
+  readonly openThread = output<string>();
+  /** Emits the message id when the viewer picks "Reply" (quote-reply). */
+  readonly replyToMessage = output<string>();
+  /** Emits the message id when the viewer picks "Forward". */
+  readonly forwardMessage = output<string>();
+  /** Emits { messageId, pin } when the viewer pins/unpins a message. */
+  readonly togglePin = output<{ messageId: string; pin: boolean }>();
 
   /** Id of the message being edited inline; null when none. */
   protected readonly editingId = signal<string | null>(null);
@@ -146,13 +166,55 @@ export class MessageListComponent {
     this.pickerFor.set(null);
   }
 
-  /** Opens or closes the emoji picker for a message. @param messageId Message id. */
+  /** Opens or closes the emoji picker for a message (closes the … menu if it was open). @param messageId Message id. */
   protected togglePicker(messageId: string): void {
+    this.menuFor.set(null);
     this.pickerFor.update(id => (id === messageId ? null : messageId));
+  }
+
+  /** Message id whose "more actions" (…) menu is open; null when closed. */
+  protected readonly menuFor = signal<string | null>(null);
+
+  /** Opens/closes the … menu for a message (closes the picker if it was open). @param messageId Message id. */
+  protected toggleMenu(messageId: string): void {
+    this.pickerFor.set(null);
+    this.menuFor.update(id => (id === messageId ? null : messageId));
+  }
+
+  /**
+   * Closes any open reaction picker / … menu when the user clicks outside the message toolbar.
+   * Click-outside (not mouseleave) is deliberate: the menu sits a few px below the floating toolbar,
+   * and closing on mouseleave made the gap between them impossible to cross — the menu vanished before
+   * the cursor reached it.
+   * @param target The clicked element.
+   */
+  @HostListener('document:click', ['$event.target'])
+  protected onDocumentClick(target: EventTarget | null): void {
+    if (this.pickerFor() === null && this.menuFor() === null) return;
+    const el = target as HTMLElement | null;
+    if (el?.closest('.msg-toolbar')) return; // click inside the toolbar/menu — leave it open
+    this.pickerFor.set(null);
+    this.menuFor.set(null);
+  }
+
+  /** Picks "Reply" from the menu. @param messageId Message to quote. */
+  protected pickReply(messageId: string): void { this.menuFor.set(null); this.replyToMessage.emit(messageId); }
+
+  /** Picks "Forward" from the menu. @param messageId Message to forward. */
+  protected pickForward(messageId: string): void { this.menuFor.set(null); this.forwardMessage.emit(messageId); }
+
+  /** Picks "Pin"/"Unpin" from the menu. @param row The row. */
+  protected pickPin(row: MessageRow): void { this.menuFor.set(null); this.togglePin.emit({ messageId: row.msg.id, pin: !row.isPinned }); }
+
+  /** A short preview of a quoted message for the inline quote box. @param m The quoted message. */
+  protected quotedPreview(m: MessageDto): string {
+    if (m.isDeleted) return 'Deleted message';
+    return m.body.length > 80 ? m.body.slice(0, 80) + '…' : m.body;
   }
 
   /** Opens inline edit for a message, seeding the draft with its current body. @param row The row. */
   protected startEdit(row: MessageRow): void {
+    this.menuFor.set(null);
     this.editingId.set(row.msg.id);
     this.editDraft.set(row.msg.body);
   }
@@ -182,8 +244,15 @@ export class MessageListComponent {
   }
 
   /** Confirms then emits a delete. @param messageId Message id. */
-  protected confirmDelete(messageId: string): void {
-    if (this.document.defaultView?.confirm('Delete this message?')) this.deleteMessage.emit(messageId);
+  protected async confirmDelete(messageId: string): Promise<void> {
+    this.menuFor.set(null);
+    const ok = await this.confirmDialog.confirm({
+      title: 'Delete message?',
+      description: 'This message will be removed for everyone in the channel. This cannot be undone.',
+      confirmText: 'Delete',
+      tone: 'danger',
+    });
+    if (ok) this.deleteMessage.emit(messageId);
   }
 
   /** Tooltip listing who reacted, e.g. "Alice, Bob". @param g Reaction group. */
@@ -220,7 +289,10 @@ export class MessageListComponent {
       const canEdit    = !isDeleted && isOwn && inWindow;
       const canDelete  = !isDeleted && ((isOwn && inWindow) || this.canModerate());
       const html       = isDeleted ? '' : renderMarkdown(msg.body, this.mentionLabels(msg));
-      return { msg, showHeader, isOwn, isContinued, dateLabel, mentionsMe, reactions, isDeleted, canEdit, canDelete, html };
+      const quoted     = msg.replyToId ? (this.messagesById()[msg.replyToId] ?? null) : null;
+      const forwarded  = !!msg.forwardedFromId;
+      const isPinned   = !!msg.isPinned;
+      return { msg, showHeader, isOwn, isContinued, dateLabel, mentionsMe, reactions, isDeleted, canEdit, canDelete, quoted, forwarded, isPinned, html };
     });
   });
 
@@ -256,6 +328,16 @@ export class MessageListComponent {
   /** Avatar letter for an author (first character of their name). @param authorId Author id. */
   authorInitial(authorId: string): string {
     return (this.authors()[authorId]?.name ?? '?').charAt(0).toUpperCase();
+  }
+
+  /** The author's custom-status emoji to show beside their name, or '' when none (CF-19). */
+  authorStatusEmoji(authorId: string): string {
+    return this.presence.getCustomStatus(authorId)?.emoji ?? '';
+  }
+
+  /** The author's custom-status note, for a tooltip on the emoji (CF-19). */
+  authorStatusText(authorId: string): string {
+    return this.presence.getCustomStatus(authorId)?.text ?? '';
   }
 
   /**

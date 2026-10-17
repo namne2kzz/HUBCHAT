@@ -173,7 +173,7 @@
                   (click)="navigate(ch)"
                   class="nav-item"
                   [class.is-active]="selectedChannelId() === ch.id"
-                  [title]="ch.name">
+                  [title]="dmName(ch)">
                   <div class="dm-avatar-wrap">
                     @if (ch.type === ChannelType.GroupDm) {
                       <div class="dm-avatar dm-avatar-group" title="Group message">
@@ -202,30 +202,8 @@
             </div>
           }
 
-          <!-- ONLINE — org members currently online (hidden while searching) -->
-          @if (!searchQuery() && onlinePeople().length > 0) {
-            <div class="sub-section">
-              <div class="section-head">
-                <span class="section-label">Online — {{ onlinePeople().length }}</span>
-              </div>
-              @for (member of onlinePeople(); track member.id) {
-                <button
-                  (click)="navigateToMember(member)"
-                  class="nav-item"
-                  [title]="member.name + ' · ' + member.email"
-                  [disabled]="openingDmForId() === member.id">
-                  <div class="dm-avatar-wrap">
-                    <div class="dm-avatar">{{ member.name.charAt(0).toUpperCase() }}</div>
-                    <span class="presence-dot presence-dot-sm presence-online"></span>
-                  </div>
-                  <span class="nav-item-text">{{ member.name }}</span>
-                  @if (openingDmForId() === member.id) {
-                    <div class="spinner" style="width:12px;height:12px;border-width:1.5px;flex-shrink:0;margin-left:auto"></div>
-                  }
-                </button>
-              }
-            </div>
-          }
+          <!-- Online contacts aren't a separate list: DMs already sort online-first with a status dot,
+               and anyone else is reachable via search → People below. -->
 
           <!-- PEOPLE — all workspace members matching the search query -->
           @if (filteredMembers().length > 0) {
@@ -270,18 +248,25 @@
           } @else if (notification.notifications().length === 0) {
             <p class="sub-empty" style="margin-top:20px;text-align:center">No notifications.</p>
           } @else {
-            @for (n of notification.notifications(); track n.id) {
-              <div class="notif-row" [class.is-unread]="!n.isRead"
-                   (click)="openNotification(n)" role="button" tabindex="0"
-                   (keydown.enter)="openNotification(n)">
-                <div class="notif-dot" [style.background]="n.isRead ? 'transparent' : 'var(--accent)'"></div>
-                <div class="notif-body">
-                  <p class="notif-kind">{{ typeLabel(n.type) }}</p>
-                  <p class="notif-preview">{{ n.preview }}</p>
-                  <p class="notif-time">{{ n.createdAt | date:'short' }}</p>
+            <div class="notif-list">
+              @for (n of notification.notifications(); track n.id) {
+                <div class="notif-row" [class.is-unread]="!n.isRead"
+                     (click)="openNotification(n)" role="button" tabindex="0"
+                     (keydown.enter)="openNotification(n)">
+                  <div class="notif-icon">{{ typeIcon(n.type) }}</div>
+                  <div class="notif-body">
+                    <div class="notif-head">
+                      <span class="notif-kind">{{ typeLabel(n.type) }}</span>
+                      @if (notifWhere(n); as where) {
+                        <span class="notif-where">in {{ where }}</span>
+                      }
+                    </div>
+                    <p class="notif-preview">{{ n.preview }}</p>
+                    <p class="notif-time">{{ n.createdAt | date:'short' }}</p>
+                  </div>
                 </div>
-              </div>
-            }
+              }
+            </div>
           }
         </div>
       }
@@ -302,6 +287,22 @@
                 <p class="settings-email">{{ user.email }}</p>
               </div>
             </div>
+
+            <!-- Custom status (CF-19) -->
+            @if (myCustomStatus(); as cs) {
+              <button type="button" class="custom-status-chip" (click)="customStatusOpen.set(true)" title="Edit status">
+                <span class="custom-status-emoji">{{ cs.emoji || '💬' }}</span>
+                <span class="custom-status-text">{{ cs.text }}</span>
+                <span class="custom-status-clear" (click)="$event.stopPropagation(); clearCustomStatus()" aria-label="Clear status">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </span>
+              </button>
+            } @else {
+              <button type="button" class="custom-status-set" (click)="customStatusOpen.set(true)">
+                <span class="custom-status-emoji">💬</span>
+                <span>Set a status</span>
+              </button>
+            }
           }
 
           <!-- Presence status -->
@@ -349,6 +350,38 @@
                 <p class="settings-hint">🌙 Quiet hours are active right now.</p>
               }
             }
+          </div>
+
+          <!-- Pause notifications ("turn off until…") -->
+          <div class="settings-section">
+            <div class="settings-row">
+              <span class="settings-row-label">Pause notifications</span>
+            </div>
+            @if (settings.mutedUntilActive()) {
+              <p class="settings-sub">⏸️ Paused until {{ settings.prefs().mutedUntilMs | date:'EEE, HH:mm' }}.</p>
+              <button type="button" class="settings-resume" (click)="settings.unmute()">Resume notifications</button>
+            } @else {
+              <p class="settings-sub">Turn notifications off for a while.</p>
+              <div class="mute-presets">
+                <button type="button" class="mute-preset" (click)="settings.muteFor('30m')">30 min</button>
+                <button type="button" class="mute-preset" (click)="settings.muteFor('1h')">1 hour</button>
+                <button type="button" class="mute-preset" (click)="settings.muteFor('4h')">4 hours</button>
+                <button type="button" class="mute-preset" (click)="settings.muteFor('tomorrow')">Until tomorrow</button>
+              </div>
+            }
+          </div>
+
+          <!-- Only when mentioned -->
+          <div class="settings-section">
+            <div class="settings-row">
+              <span class="settings-row-label">Only notify for &#64;mentions</span>
+              <label class="switch">
+                <input type="checkbox" [checked]="settings.prefs().onlyWhenMentioned"
+                       (change)="onOnlyMentionedToggle($event)" />
+                <span class="switch-track"></span>
+              </label>
+            </div>
+            <p class="settings-sub">While notifications are off (DnD, quiet hours or paused), still alert me when someone &#64;mentions me.</p>
           </div>
 
           <!-- Appearance -->
@@ -402,6 +435,14 @@
     [workspaceId]="createChannelRepoId()"
     (created)="onChannelCreated($event)"
     (close)="createDialogOpen.set(false)" />
+}
+
+<!-- Custom status dialog (CF-19) -->
+@if (customStatusOpen() && auth.currentUser(); as me) {
+  <app-custom-status-dialog
+    [userId]="me.id"
+    (saved)="customStatusOpen.set(false)"
+    (close)="customStatusOpen.set(false)" />
 }
 
 <!-- App-wide confirm dialog (rendered on demand by ConfirmDialogService) -->

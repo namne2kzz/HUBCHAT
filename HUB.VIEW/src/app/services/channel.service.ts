@@ -117,6 +117,16 @@ export class ChannelService {
   }
 
   /** Removes the caller from a channel (DELETE /channels/{id}/members/me). @param id Channel id. */
+  /** Archives a channel (Owner/Admin). @param id Channel id. @returns Completes on success. */
+  archive(id: string): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/${id}/archive`, {});
+  }
+
+  /** Reopens an archived channel (Owner/Admin). @param id Channel id. @returns Completes on success. */
+  unarchive(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/${id}/archive`);
+  }
+
   leave(id: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/${id}/members/me`);
   }

@@ -2,6 +2,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MessageListComponent } from './message-list.component';
 import { MessageDto } from '../../models/message.model';
 import { DirectoryUser } from '../../models/directory.model';
+import { ConfirmDialogService } from '../../services/confirm-dialog.service';
+import { PresenceService } from '../../services/presence.service';
 
 /**
  * Covers the message list's grouping and rendering logic.
@@ -51,8 +53,23 @@ describe('MessageListComponent', () => {
     return component.rows();
   };
 
+  // Themed confirm dialog is awaited inside confirmDelete; stub it so a test picks the outcome.
+  let confirmResult = true;
+  let confirmSpy: jasmine.Spy;
+
   beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [MessageListComponent] }).compileComponents();
+    confirmResult = true;
+    const confirmStub = { confirm: () => Promise.resolve(confirmResult) };
+    await TestBed.configureTestingModule({
+      imports: [MessageListComponent],
+      providers: [
+        { provide: ConfirmDialogService, useValue: confirmStub },
+        // Stub presence so the real service (HttpClient + realtime) isn't pulled in; the list only
+        // reads a peer's custom-status emoji from it.
+        { provide: PresenceService, useValue: { getCustomStatus: () => null } },
+      ],
+    }).compileComponents();
+    confirmSpy = spyOn(confirmStub, 'confirm').and.callThrough();
 
     fixture = TestBed.createComponent(MessageListComponent);
     component = fixture.componentInstance;
@@ -283,7 +300,7 @@ describe('MessageListComponent', () => {
       fixture.componentRef.setInput('canReact', true);
       rowsFor([msg(BOB, 0)]);
 
-      (fixture.nativeElement.querySelector('.reaction-add') as HTMLButtonElement).click();
+      (fixture.nativeElement.querySelector('[aria-label="Add reaction"]') as HTMLButtonElement).click();
       fixture.detectChanges();
       const picks = fixture.nativeElement.querySelectorAll('.reaction-pick') as NodeListOf<HTMLButtonElement>;
       expect(picks.length).toBeGreaterThan(0);
@@ -300,7 +317,8 @@ describe('MessageListComponent', () => {
       rowsFor([msg(BOB, 0, { reactions: [{ emoji: '👍', userId: ALICE }] })]);
 
       expect(chips()[0].disabled).toBeTrue();
-      expect(fixture.nativeElement.querySelector('.reaction-add')).toBeNull();
+      // No toolbar for a non-member on someone else's message — nothing to react/edit/delete with.
+      expect(fixture.nativeElement.querySelector('.msg-toolbar')).toBeNull();
     });
   });
 
@@ -308,7 +326,10 @@ describe('MessageListComponent', () => {
     const fresh = (over = {}) => ({ ...msg(ME, 0, over), createdAt: new Date().toISOString() });
     const edits: { messageId: string; body: string }[] = [];
     const deletes: string[] = [];
-    const actionBtns = () => Array.from(fixture.nativeElement.querySelectorAll('.msg-action')) as HTMLButtonElement[];
+    // Outside the bubble there is only the "…" button; edit/delete live inside the menu it opens.
+    const moreBtn = () => fixture.nativeElement.querySelector('[aria-label="More actions"]') as HTMLButtonElement | null;
+    const menuItems = () => Array.from(fixture.nativeElement.querySelectorAll('.msg-menu-item')) as HTMLButtonElement[];
+    const openMenu = () => { moreBtn()!.click(); fixture.detectChanges(); };
 
     beforeEach(() => {
       edits.length = 0; deletes.length = 0;
@@ -317,41 +338,47 @@ describe('MessageListComponent', () => {
       component.deleteMessage.subscribe(id => deletes.push(id));
     });
 
-    it('offers edit + delete on my own recent message', () => {
+    it('shows a … button on my own recent message, with edit + delete in its menu', () => {
       fixture.componentRef.setInput('messages', [fresh()]);
       fixture.detectChanges();
-      expect(actionBtns().length).toBe(2);
+
+      expect(moreBtn()).not.toBeNull();
+      expect(menuItems().length).toBe(0); // closed until clicked
+      openMenu();
+      expect(menuItems().map(i => i.textContent?.trim())).toEqual(['Edit message', 'Delete message']);
     });
 
-    it('offers nothing on someone else\'s message when not a moderator', () => {
+    it('shows no … button on someone else\'s message when not a moderator', () => {
       fixture.componentRef.setInput('messages', [{ ...msg(ALICE, 0), createdAt: new Date().toISOString() }]);
-      fixture.componentRef.setInput('currentUserId', ME);
       fixture.detectChanges();
-      expect(actionBtns().length).toBe(0);
+      expect(moreBtn()).toBeNull();
     });
 
     it('lets a moderator delete (but not edit) someone else\'s message', () => {
       fixture.componentRef.setInput('messages', [{ ...msg(ALICE, 0), createdAt: new Date().toISOString() }]);
-      fixture.componentRef.setInput('currentUserId', ME);
       fixture.componentRef.setInput('canModerate', true);
       fixture.detectChanges();
-      const btns = actionBtns();
-      expect(btns.length).toBe(1);
-      expect(btns[0].classList).toContain('msg-action-danger');
+      openMenu();
+
+      const items = menuItems();
+      expect(items.map(i => i.textContent?.trim())).toEqual(['Delete message']);
+      expect(items[0].classList).toContain('msg-menu-item-danger');
     });
 
-    it('hides edit once the message is older than the window', () => {
+    it('shows no … button once the message is older than the window', () => {
       // msg(ME, 0) uses BASE (2026-09-27) — far past the 24h window.
       fixture.componentRef.setInput('messages', [msg(ME, 0)]);
       fixture.detectChanges();
-      expect(actionBtns().length).toBe(0);
+      expect(moreBtn()).toBeNull();
     });
 
     it('emits an edit with the changed body', () => {
       fixture.componentRef.setInput('messages', [fresh({ body: 'original' })]);
       fixture.detectChanges();
-      actionBtns()[0].click();                         // edit
+      openMenu();
+      menuItems()[0].click();                          // Edit
       fixture.detectChanges();
+
       const ta = fixture.nativeElement.querySelector('.msg-edit-input') as HTMLTextAreaElement;
       ta.value = 'original fixed';
       ta.dispatchEvent(new Event('input'));
@@ -363,27 +390,224 @@ describe('MessageListComponent', () => {
     it('does not emit an edit when the body is unchanged', () => {
       fixture.componentRef.setInput('messages', [fresh({ body: 'same' })]);
       fixture.detectChanges();
-      actionBtns()[0].click();
+      openMenu();
+      menuItems()[0].click();
       fixture.detectChanges();
       (fixture.nativeElement.querySelector('.msg-edit-save') as HTMLButtonElement).click();
       expect(edits.length).toBe(0);
     });
 
-    it('confirms before emitting a delete', () => {
+    it('emits the delete when the confirm dialog is accepted', async () => {
+      confirmResult = true;
       fixture.componentRef.setInput('messages', [fresh()]);
       fixture.detectChanges();
-      spyOn(window, 'confirm').and.returnValue(true);
+      openMenu();
 
-      actionBtns()[1].click();                         // delete
+      menuItems().find(i => i.textContent?.trim() === 'Delete message')!.click();
+      await confirmSpy.calls.mostRecent().returnValue;
 
+      expect(confirmSpy).toHaveBeenCalledWith(jasmine.objectContaining({ tone: 'danger' }));
       expect(deletes).toEqual(['m-me-0']);
+    });
+
+    it('does not emit the delete when the confirm dialog is cancelled', async () => {
+      confirmResult = false;
+      fixture.componentRef.setInput('messages', [fresh()]);
+      fixture.detectChanges();
+      openMenu();
+
+      menuItems().find(i => i.textContent?.trim() === 'Delete message')!.click();
+      await confirmSpy.calls.mostRecent().returnValue;
+
+      expect(deletes).toEqual([]);
     });
 
     it('renders a tombstone for a deleted message and no actions', () => {
       fixture.componentRef.setInput('messages', [fresh({ isDeleted: true, body: '' })]);
       fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('.bubble-deleted')).not.toBeNull();
-      expect(actionBtns().length).toBe(0);
+      expect(moreBtn()).toBeNull();
+    });
+  });
+
+  // The popovers used to auto-close on mouseleave, so the cursor could never travel the gap from the
+  // toolbar into the menu. They now open/close on click, cross-close each other, and close on an
+  // outside click — that is what keeps the action list reachable.
+  describe('toolbar popovers (picker + … menu)', () => {
+    const fresh = (over = {}) => ({ ...msg(ME, 0, over), createdAt: new Date().toISOString() });
+    const moreBtn = () => fixture.nativeElement.querySelector('[aria-label="More actions"]') as HTMLButtonElement;
+    const addBtn = () => fixture.nativeElement.querySelector('[aria-label="Add reaction"]') as HTMLButtonElement;
+    const menu = () => fixture.nativeElement.querySelector('.msg-menu');
+    const picker = () => fixture.nativeElement.querySelector('.reaction-picker');
+
+    beforeEach(() => {
+      fixture.componentRef.setInput('canReact', true);
+      fixture.componentRef.setInput('messages', [fresh()]);
+      fixture.detectChanges();
+    });
+
+    it('stays open after the opening click (not dismissed by the same document click)', () => {
+      moreBtn().click();
+      fixture.detectChanges();
+      expect(menu()).not.toBeNull();
+    });
+
+    it('opening the … menu closes the reaction picker', () => {
+      addBtn().click();
+      fixture.detectChanges();
+      expect(picker()).not.toBeNull();
+
+      moreBtn().click();
+      fixture.detectChanges();
+      expect(picker()).toBeNull();
+      expect(menu()).not.toBeNull();
+    });
+
+    it('a click outside the toolbar closes an open menu', () => {
+      moreBtn().click();
+      fixture.detectChanges();
+      expect(menu()).not.toBeNull();
+
+      document.body.click(); // outside the .msg-toolbar
+      fixture.detectChanges();
+      expect(menu()).toBeNull();
+    });
+  });
+
+  describe('thread summary', () => {
+    const threadLink = () => fixture.nativeElement.querySelector('.thread-link') as HTMLButtonElement | null;
+
+    it('shows a reply count link on a message that has replies', () => {
+      rowsFor([msg(ALICE, 0, { replyCount: 3, lastReplyAt: new Date().toISOString() })]);
+      expect(threadLink()?.textContent).toContain('3 replies');
+    });
+
+    it('says "1 reply" (singular) for a single reply', () => {
+      rowsFor([msg(ALICE, 0, { replyCount: 1 })]);
+      expect(threadLink()?.textContent).toContain('1 reply');
+    });
+
+    it('shows no link when there are no replies', () => {
+      rowsFor([msg(ALICE, 0, { replyCount: 0 })]);
+      expect(threadLink()).toBeNull();
+    });
+
+    it('emits openThread with the message id when clicked', () => {
+      const opened: string[] = [];
+      component.openThread.subscribe(id => opened.push(id));
+      rowsFor([msg(ALICE, 0, { replyCount: 2 })]);
+
+      threadLink()!.click();
+
+      expect(opened).toEqual(['m-alice-0']);
+    });
+
+    it('shows no thread link on a deleted message', () => {
+      rowsFor([msg(ALICE, 0, { replyCount: 2, isDeleted: true, body: '' })]);
+      expect(threadLink()).toBeNull();
+    });
+  });
+
+  describe('reply / forward', () => {
+    const fresh = () => ({ ...msg(ALICE, 0), createdAt: new Date().toISOString() });
+    const menuItems = () => Array.from(fixture.nativeElement.querySelectorAll('.msg-menu-item')) as HTMLButtonElement[];
+    const openMenu = () => {
+      (fixture.nativeElement.querySelector('[aria-label="More actions"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    };
+
+    beforeEach(() => {
+      fixture.componentRef.setInput('currentUserId', ME);
+      fixture.componentRef.setInput('canReact', true);
+    });
+
+    it('a member can Reply and Forward any message', () => {
+      fixture.componentRef.setInput('messages', [fresh()]);
+      fixture.detectChanges();
+      openMenu();
+      expect(menuItems().map(i => i.textContent?.trim())).toEqual(['Reply', 'Forward', 'Pin']);
+    });
+
+    it('emits replyToMessage when Reply is picked', () => {
+      const ids: string[] = [];
+      component.replyToMessage.subscribe(id => ids.push(id));
+      fixture.componentRef.setInput('messages', [fresh()]);
+      fixture.detectChanges();
+      openMenu();
+      menuItems().find(i => i.textContent?.trim() === 'Reply')!.click();
+      expect(ids).toEqual(['m-alice-0']);
+    });
+
+    it('emits forwardMessage when Forward is picked', () => {
+      const ids: string[] = [];
+      component.forwardMessage.subscribe(id => ids.push(id));
+      fixture.componentRef.setInput('messages', [fresh()]);
+      fixture.detectChanges();
+      openMenu();
+      menuItems().find(i => i.textContent?.trim() === 'Forward')!.click();
+      expect(ids).toEqual(['m-alice-0']);
+    });
+
+    it('shows a quote preview resolved from messagesById', () => {
+      const quoted = msg(BOB, 0, { id: 'quoted-1', body: 'the original point' });
+      const reply = { ...fresh(), replyToId: 'quoted-1' };
+      fixture.componentRef.setInput('messages', [reply]);
+      fixture.componentRef.setInput('messagesById', { 'quoted-1': quoted });
+      fixture.detectChanges();
+
+      const quote = fixture.nativeElement.querySelector('.msg-quote') as HTMLElement;
+      expect(quote).not.toBeNull();
+      expect(quote.textContent).toContain('the original point');
+    });
+
+    it('shows a "Forwarded" label on a forwarded message', () => {
+      fixture.componentRef.setInput('messages', [{ ...fresh(), forwardedFromId: 'orig-1' }]);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.msg-forwarded')?.textContent).toContain('Forwarded');
+    });
+  });
+
+  describe('pin', () => {
+    const fresh = (over = {}) => ({ ...msg(ALICE, 0, over), createdAt: new Date().toISOString() });
+    const menuItems = () => Array.from(fixture.nativeElement.querySelectorAll('.msg-menu-item')) as HTMLButtonElement[];
+    const openMenu = () => {
+      (fixture.nativeElement.querySelector('[aria-label="More actions"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    };
+
+    beforeEach(() => {
+      fixture.componentRef.setInput('currentUserId', ME);
+      fixture.componentRef.setInput('canReact', true);
+    });
+
+    it('offers "Pin" on an unpinned message', () => {
+      fixture.componentRef.setInput('messages', [fresh()]);
+      fixture.detectChanges();
+      openMenu();
+      expect(menuItems().map(i => i.textContent?.trim())).toContain('Pin');
+    });
+
+    it('offers "Unpin" on a pinned message', () => {
+      fixture.componentRef.setInput('messages', [fresh({ isPinned: true })]);
+      fixture.detectChanges();
+      openMenu();
+      expect(menuItems().map(i => i.textContent?.trim())).toContain('Unpin');
+    });
+
+    it('emits togglePin with pin=true from an unpinned message', () => {
+      const events: { messageId: string; pin: boolean }[] = [];
+      component.togglePin.subscribe(e => events.push(e));
+      fixture.componentRef.setInput('messages', [fresh()]);
+      fixture.detectChanges();
+      openMenu();
+      menuItems().find(i => i.textContent?.trim() === 'Pin')!.click();
+      expect(events).toEqual([{ messageId: 'm-alice-0', pin: true }]);
+    });
+
+    it('no longer renders an inline pinned tag (pins now surface in the channel top bar)', () => {
+      fixture.componentRef.setInput('messages', [fresh({ isPinned: true })]);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.msg-pinned-tag')).toBeNull();
     });
   });
 });

@@ -10,7 +10,7 @@ describe('ChannelMembersPanelComponent', () => {
   let fixture: ComponentFixture<ChannelMembersPanelComponent>;
 
   beforeEach(async () => {
-    const rtMock = { presenceChanged$: new Subject() };
+    const rtMock = { presenceChanged$: new Subject(), customStatusChanged$: new Subject() };
     await TestBed.configureTestingModule({
       imports: [ChannelMembersPanelComponent],
       providers: [

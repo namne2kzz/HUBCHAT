@@ -62,6 +62,40 @@ public sealed class Message : AggregateRoot
     /// <summary>True when the message has been soft-deleted.</summary>
     public bool IsDeleted => DeletedAt is not null;
 
+    /// <summary>UTC time the message was pinned; null when not pinned.</summary>
+    public DateTime? PinnedAt { get; private set; }
+
+    /// <summary>User who pinned the message; null when not pinned.</summary>
+    public Guid? PinnedBy { get; private set; }
+
+    /// <summary>True when the message is pinned in its channel.</summary>
+    public bool IsPinned => PinnedAt is not null;
+
+    /// <summary>Pins the message. Idempotent — re-pinning keeps the original pinner/time.</summary>
+    /// <param name="userId">User pinning it.</param>
+    /// <returns>True when this call pinned it; false when it was already pinned.</returns>
+    /// <exception cref="DomainException">The message is deleted.</exception>
+    public bool Pin(Guid userId)
+    {
+        if (IsDeleted) throw new DomainException("Cannot pin a deleted message.");
+        if (IsPinned) return false;
+        PinnedAt = DateTime.UtcNow;
+        PinnedBy = userId;
+        Touch();
+        return true;
+    }
+
+    /// <summary>Unpins the message. Idempotent.</summary>
+    /// <returns>True when this call unpinned it; false when it was not pinned.</returns>
+    public bool Unpin()
+    {
+        if (!IsPinned) return false;
+        PinnedAt = null;
+        PinnedBy = null;
+        Touch();
+        return true;
+    }
+
     /// <summary>Reactions on this message.</summary>
     public IReadOnlyCollection<Reaction> Reactions => _reactions.AsReadOnly();
 
@@ -91,6 +125,24 @@ public sealed class Message : AggregateRoot
         return new Message(channelId, authorId, body.Trim(), format, parentId, replyToId, mentions ?? [])
         {
             ClientMessageId = clientMessageId,
+        };
+    }
+
+    /// <summary>Creates a forward of an existing message into a channel (its body copied, origin recorded).</summary>
+    /// <param name="channelId">Destination channel.</param>
+    /// <param name="authorId">User doing the forwarding (the new message's author).</param>
+    /// <param name="body">The forwarded body (copied from the source).</param>
+    /// <param name="format">The source message's format, preserved.</param>
+    /// <param name="forwardedFromId">Id of the original message, for a "forwarded from" label.</param>
+    /// <returns>The new forwarded message.</returns>
+    public static Message Forward(Guid channelId, Guid authorId, string body, MessageFormat format, Guid forwardedFromId)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            throw new DomainException("Cannot forward an empty message.");
+
+        return new Message(channelId, authorId, body.Trim(), format, parentId: null, replyToId: null, mentions: [])
+        {
+            ForwardedFromId = forwardedFromId,
         };
     }
 

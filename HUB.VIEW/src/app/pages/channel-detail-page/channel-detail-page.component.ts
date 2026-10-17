@@ -2,12 +2,13 @@ import {
   AfterViewInit, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject,
   Injector, OnDestroy, OnInit, signal, ViewChild,
 } from '@angular/core';
-import { debounceTime, distinctUntilChanged, of, Subject, switchMap } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, map, of, Subject, switchMap, tap } from 'rxjs';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { ChannelService } from '../../services/channel.service';
 import { MessageService } from '../../services/message.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { DirectoryService } from '../../services/directory.service';
+import { PresenceService } from '../../services/presence.service';
 import { AuthService } from '../../services/auth.service';
 import { ChannelDto, ChannelMemberRole, ChannelType } from '../../models/channel.model';
 import { MessageDto, ReactionToggle } from '../../models/message.model';
@@ -18,13 +19,15 @@ import { DirectoryUser } from '../../models/directory.model';
 import { MessageListComponent } from '../../components/message-list/message-list.component';
 import { MessageInputComponent, ComposerSubmit } from '../../components/message-input/message-input.component';
 import { TypingIndicatorComponent } from '../../components/typing-indicator/typing-indicator.component';
+import { ThreadPanelComponent } from '../../components/thread-panel/thread-panel.component';
 import { ChannelInfoPanelComponent } from '../../components/channel-info-panel/channel-info-panel.component';
+
 import { DatePipe, DOCUMENT } from '@angular/common';
 
 @Component({
   selector: 'app-channel-detail-page',
   standalone: true,
-  imports: [MessageListComponent, MessageInputComponent, TypingIndicatorComponent, ChannelInfoPanelComponent, DatePipe],
+  imports: [MessageListComponent, MessageInputComponent, TypingIndicatorComponent, ChannelInfoPanelComponent, ThreadPanelComponent, DatePipe],
   templateUrl: './channel-detail-page.component.html',
   styleUrl: './channel-detail-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,6 +39,7 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   private readonly messageSvc = inject(MessageService);
   private readonly realtime   = inject(RealtimeService);
   private readonly directory  = inject(DirectoryService);
+  private readonly presence   = inject(PresenceService);
   private readonly auth       = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector   = inject(Injector);
@@ -46,6 +50,15 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
 
   protected readonly channel      = signal<ChannelDto | null>(null);
   protected readonly messages     = signal<MessageDto[]>([]);
+  /** Messages keyed by id, so a quote-reply can render a preview of what it quotes. */
+  protected readonly messagesById = computed(() => Object.fromEntries(this.messages().map(m => [m.id, m])));
+  /** The message being quote-replied to; null when not replying. */
+  protected readonly replyingTo = signal<MessageDto | null>(null);
+  /** The message being forwarded (drives the forward dialog); null when closed. */
+  protected readonly forwarding = signal<MessageDto | null>(null);
+  /** Channels the user can forward into (every channel they are a member of, bar the current one). */
+  protected readonly forwardTargets = computed(() =>
+    (this.channelSvc.channelsCache() ?? []).filter(c => c.isMember && c.id !== this.channelId));
   protected readonly authors      = signal<Record<string, DirectoryUser>>({});
   /** Channel members offered in the composer's @mention list. */
   protected readonly mentionCandidates = signal<DirectoryUser[]>([]);
@@ -53,7 +66,14 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   protected readonly hasMore      = signal(false);
   /** Channel "…" info modal (About/Members). */
   protected readonly infoOpen = signal(false);
+  /** The top-level message whose thread panel is open; null when closed. */
+  protected readonly threadRoot = signal<MessageDto | null>(null);
   protected readonly infoTab  = signal<'about' | 'members'>('about');
+
+  /** Pinned messages for this channel, newest-pinned first (CF-10) — listed in the pinned dialog. */
+  protected readonly pinnedMessages = signal<MessageDto[]>([]);
+  /** Whether the pinned-messages dialog is open. */
+  protected readonly pinnedOpen = signal(false);
 
   // ── In-channel search ───────────────────────────────────────────────────
   protected readonly searchMode  = signal(false);
@@ -66,11 +86,12 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
    * Messages matching the current search query.
    * Non-empty only when search mode is active and a query has been typed.
    */
-  protected readonly searchResults = computed(() => {
-    const q = this.searchQuery().toLowerCase().trim();
-    if (!this.searchMode() || !q) return [];
-    return this.messages().filter(m => m.body.toLowerCase().includes(q));
-  });
+  /** Server search results for the current query; loaded (debounced) as the user types. */
+  protected readonly searchResults = signal<MessageDto[]>([]);
+  /** True while a search request is in flight. */
+  protected readonly searching = signal(false);
+  /** Pushes each keystroke; debounced into one search call. */
+  private readonly searchInput$ = new Subject<string>();
 
   /** Current user's id — passed to message-list for own-message highlighting. */
   protected readonly currentUserId = computed(() => this.auth.currentUser()?.id ?? '');
@@ -83,7 +104,10 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
    * any repo member, but sending requires membership — non-members see a "join" bar instead of
    * the composer (mirrors the backend, which returns 403 on post/react for non-members).
    */
-  protected readonly canPost = computed(() => this.channel()?.isMember ?? false);
+  protected readonly canPost = computed(() => {
+    const c = this.channel();
+    return !!c && c.isMember && !c.isArchived; // archived channels are read-only
+  });
 
   /**
    * Whether the viewer may moderate (delete anyone's message). Owner/Admin of the channel; the server also
@@ -119,6 +143,22 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     // Subscribe to realtime ONCE — all filters read this.channelId at event time.
     this.subscribeRealtime();
     this.subscribeReadTracking();
+
+    // Full-history search runs server-side (not just loaded messages). Debounced so typing is cheap;
+    // switchMap drops a stale request when a newer keystroke arrives.
+    this.searchInput$.pipe(
+      map(q => q.trim()),
+      distinctUntilChanged(),
+      debounceTime(250),
+      tap(q => this.searching.set(q.length > 0)),
+      switchMap(q => q.length === 0 ? of([] as MessageDto[])
+        : this.messageSvc.search(this.channelId, q).pipe(catchError(() => of([] as MessageDto[])))),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(results => {
+      this.searchResults.set(results);
+      this.searching.set(false);
+      this.resolveAuthors(results);
+    });
 
     // The open channel is app state (ChannelService.selectedId), not a URL param — the URL
     // stays /{orgAlias}/channels. React to selection changes to load the chosen channel.
@@ -193,17 +233,108 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     this.messageSvc.delete(messageId).subscribe({ error: () => this.messages.set(before) });
   }
 
+  /** Pins/unpins a message (optimistic, rolled back on failure). @param e Message id + desired state. */
+  protected onTogglePin(e: { messageId: string; pin: boolean }): void {
+    const beforeMsgs = this.messages();
+    const beforePinned = this.pinnedMessages();
+    this.messages.update(prev => prev.map(m => m.id === e.messageId ? { ...m, isPinned: e.pin } : m));
+    this.applyPinToBar(e.messageId, e.pin);
+    const call = e.pin ? this.messageSvc.pin(e.messageId) : this.messageSvc.unpin(e.messageId);
+    call.subscribe({ error: () => { this.messages.set(beforeMsgs); this.pinnedMessages.set(beforePinned); } });
+  }
+
+  /** Jumps the message list to a pinned message and closes the dialog. @param messageId Message id. */
+  protected jumpToPinned(messageId: string): void {
+    this.pinnedOpen.set(false);
+    this.scrollToMessage(messageId);
+  }
+
+  /** Unpins a message straight from the pinned dialog; closes it if that was the last pin. @param messageId Message id. */
+  protected unpinFromBar(messageId: string): void {
+    this.onTogglePin({ messageId, pin: false });
+    if (this.pinnedMessages().length === 0) this.pinnedOpen.set(false);
+  }
+
+  /** Adds/removes a message in the pinned bar (newest-pinned first). @param messageId Message id. @param pin Whether it is now pinned. */
+  private applyPinToBar(messageId: string, pin: boolean): void {
+    if (!pin) {
+      this.pinnedMessages.update(list => list.filter(m => m.id !== messageId));
+      return;
+    }
+    if (this.pinnedMessages().some(m => m.id === messageId)) return;
+    const msg = this.messages().find(m => m.id === messageId);
+    if (msg) this.pinnedMessages.update(list => [{ ...msg, isPinned: true }, ...list]);
+  }
+
+  /** Opens the thread panel for a message. @param messageId Top-level message id. */
+  protected openThread(messageId: string): void {
+    const root = this.messages().find(m => m.id === messageId);
+    if (root) this.threadRoot.set(root);
+  }
+
+  /** Updates the thread summary on the root message after a reply is posted. @param e parentId + new count. */
+  protected onReplyCountChanged(e: { parentId: string; count: number }): void {
+    this.messages.update(prev => prev.map(m =>
+      m.id === e.parentId ? { ...m, replyCount: e.count, lastReplyAt: new Date().toISOString() } : m));
+    // Keep the open panel's root in sync so its header count updates too.
+    this.threadRoot.update(r => r && r.id === e.parentId ? { ...r, replyCount: e.count } : r);
+  }
+
   /** Sends a composed message (Markdown). @param payload Composer output. */
   protected sendMessage(payload: ComposerSubmit): void {
     if (!payload.body.trim()) return;
     clearTimeout(this.typingTimer ?? undefined);
     this.realtime.stopTyping(this.channelId);
+    const replyToId = this.replyingTo()?.id;
     this.messageSvc.send(this.channelId, {
-      body: payload.body, format: payload.format, mentionedUserIds: payload.mentionedUserIds,
+      body: payload.body, format: payload.format, mentionedUserIds: payload.mentionedUserIds, replyToId,
     }).subscribe(msg => {
       this.messages.update(prev => mergeMessages(prev, [msg], 'replace'));
       this.resolveAuthors([msg]);
     });
+    this.replyingTo.set(null);
+  }
+
+  /** Starts a quote-reply to a message. @param messageId Message to quote. */
+  protected startReply(messageId: string): void {
+    const m = this.messages().find(x => x.id === messageId);
+    if (m) this.replyingTo.set(m);
+  }
+
+  /** Cancels the pending quote-reply. */
+  protected cancelReply(): void { this.replyingTo.set(null); }
+
+  /** Opens the forward dialog for a message. @param messageId Message to forward. */
+  protected startForward(messageId: string): void {
+    const m = this.messages().find(x => x.id === messageId);
+    if (!m) return;
+    this.forwarding.set(m);
+    // Resolve DM-target partner names so the list shows people, not "dm-…" slugs.
+    const known = this.authors();
+    const missing = [...new Set(
+      this.forwardTargets()
+        .filter(c => (c.type === ChannelType.Dm || c.type === ChannelType.GroupDm) && c.otherUserId)
+        .map(c => c.otherUserId!)
+        .filter(id => !known[id]),
+    )];
+    if (missing.length) {
+      this.directory.getUsers(missing).subscribe({
+        next: users => this.authors.update(a => ({ ...a, ...Object.fromEntries(users.map(u => [u.id, u])) })),
+        error: () => { /* fall back to "Direct message" */ },
+      });
+    }
+  }
+
+  /** Forwards the pending message into a channel, then closes the dialog. @param targetChannelId Destination. */
+  protected doForward(targetChannelId: string): void {
+    const src = this.forwarding();
+    if (!src) return;
+    this.messageSvc.forward(src.id, targetChannelId).subscribe({ next: () => this.forwarding.set(null), error: () => this.forwarding.set(null) });
+  }
+
+  /** A short preview of a message for the reply bar / forward dialog. @param m The message. */
+  protected shortPreview(m: MessageDto): string {
+    return m.body.length > 90 ? m.body.slice(0, 90) + '…' : m.body;
   }
 
   /** Joins the open (public) channel so the current user can post; swaps the join bar for the composer. */
@@ -273,15 +404,26 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     this.loadChannel();
   }
 
+  /** Reflects archive/reopen in the header (archived channels hide the composer via canPost). @param archived New state. */
+  protected onArchivedChanged(archived: boolean): void {
+    this.channel.update(c => (c ? { ...c, isArchived: archived } : c));
+  }
+
   /** Toggles in-channel search mode; clears the query when closing. */
   protected toggleSearch(): void {
     this.searchMode.update(v => !v);
-    if (!this.searchMode()) this.searchQuery.set('');
+    if (!this.searchMode()) {
+      this.searchQuery.set('');
+      this.searchResults.set([]);
+      this.searchInput$.next('');
+    }
   }
 
   /** Updates the search query from native input event. @param event Native input event. */
   protected onSearchInput(event: Event): void {
-    this.searchQuery.set((event.target as HTMLInputElement).value);
+    const q = (event.target as HTMLInputElement).value;
+    this.searchQuery.set(q);
+    this.searchInput$.next(q);
   }
 
   /**
@@ -303,6 +445,20 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
    */
   protected authorName(authorId: string): string {
     return this.authors()[authorId]?.name ?? `User ${authorId.slice(0, 8)}`;
+  }
+
+  /**
+   * Human label for a forward target: "#channel" for a channel, or the partner's name for a DM
+   * (the stored DM name is an internal "dm-…" slug, never shown to the user).
+   * @param ch The candidate channel.
+   * @returns The label to display in the forward list.
+   */
+  protected targetLabel(ch: ChannelDto): string {
+    if (ch.type === ChannelType.Dm || ch.type === ChannelType.GroupDm) {
+      const name = ch.otherUserId ? this.authors()[ch.otherUserId]?.name : null;
+      return name ?? 'Direct message';
+    }
+    return `#${ch.name}`;
   }
 
   /**
@@ -355,6 +511,8 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     this.infoOpen.set(false);
     this.searchMode.set(false);
     this.searchQuery.set('');
+    this.pinnedMessages.set([]);
+    this.pinnedOpen.set(false);
   }
 
   private initChannel(id: string): void {
@@ -362,7 +520,17 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     this.loadChannel();
     this.loadMessages();
     this.loadMentionCandidates();
+    this.loadPinned();
     this.realtime.joinChannel(id);
+  }
+
+  /** Loads the channel's pinned messages for the top pinned bar (CF-10). */
+  private loadPinned(): void {
+    const channelId = this.channelId;
+    this.messageSvc.listPinned(channelId).subscribe({
+      next: pinned => { if (channelId === this.channelId) { this.pinnedMessages.set(pinned); this.resolveAuthors(pinned); } },
+      error: () => { /* non-critical: the bar just stays empty */ },
+    });
   }
 
   /**
@@ -498,6 +666,9 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     const missing = [...new Set(ids)].filter(id => !known[id]);
     if (!missing.length) return;
 
+    // Pull these authors' custom statuses (CF-19) so the emoji shows beside their name.
+    this.presence.fetchCustomStatuses(missing).subscribe();
+
     // One request for the whole page's authors — a page with 15 distinct authors used to fire 15.
     this.directory.getUsers(missing).subscribe({
       next: users => this.authors.update(a => ({
@@ -559,6 +730,14 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
       .subscribe(e => {
         if (e.channelId !== this.channelId) return;
         this.messages.update(prev => prev.map(m => removeReaction(m, e.messageId, e.userId, e.emoji)));
+      });
+
+    this.realtime.messagePinChanged$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(e => {
+        if (e.channelId !== this.channelId) return;
+        this.messages.update(prev => prev.map(m => m.id === e.messageId ? { ...m, isPinned: e.isPinned } : m));
+        this.applyPinToBar(e.messageId, e.isPinned);
       });
 
     this.realtime.channelAccessRevoked$

@@ -180,10 +180,11 @@ body {
 /* Notification rows in sub-sidebar */
 .notif-body    { flex: 1; min-width: 0; }
 .notif-preview {
-  font-size: 0.82rem; color: var(--text-primary); margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 0.78rem; color: var(--text-secondary); margin-top: 1px; line-height: 1.35;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; text-overflow: ellipsis;
 }
-.notif-time { font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; }
+.notif-time { font-size: 0.65rem; color: var(--text-muted); margin-top: 2px; }
 
 /* Settings panel */
 .settings-profile-card {
@@ -236,6 +237,30 @@ body {
 .status-option-label { flex: 1; min-width: 0; }
 .status-check { color: var(--accent-text); flex-shrink: 0; }
 .settings-hint { font-size: 0.72rem; color: var(--text-muted); padding: 4px 12px 0; }
+
+/* Custom status (CF-19) — chip under the profile card */
+.custom-status-set,
+.custom-status-chip {
+  width: calc(100% - 16px); margin: 0 8px 8px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 10px;
+  border: 1px solid var(--border-strong); background: var(--bg-surface);
+  color: var(--text-secondary); font-size: 0.82rem; cursor: pointer; text-align: left;
+  transition: background .12s, border-color .12s;
+}
+.custom-status-set:hover,
+.custom-status-chip:hover { background: var(--bg-hover); border-color: var(--text-primary); }
+.custom-status-emoji { font-size: 1rem; flex-shrink: 0; }
+.custom-status-text {
+  flex: 1; min-width: 0; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.custom-status-clear {
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0;
+  color: var(--text-muted);
+}
+.custom-status-clear:hover { background: var(--bg-active); color: var(--text-primary); }
 .settings-sub  { font-size: 0.72rem; color: var(--text-muted); padding: 0 10px 4px; }
 
 /* Toggle switch */
@@ -423,9 +448,9 @@ body {
 .day-divider::before, .day-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 .day-divider span { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
 .reaction-chip {
-  display: inline-flex; align-items: center; gap: 0.2rem;
-  font-size: 0.75rem; color: var(--text-secondary);
-  padding: 0.1rem 0.5rem; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 0.15rem;
+  font-size: 0.68rem; color: var(--text-secondary); line-height: 1;
+  padding: 0.08rem 0.38rem; border-radius: 999px;
   background: var(--bg-surface-2); border: 1px solid var(--border);
 }
 
@@ -464,12 +489,40 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 .empty-note { color: var(--text-muted); font-size: 0.875rem; }
 
-/* Notifications */
-.notif-row { display: flex; gap: 0.75rem; padding: 0.75rem; border-radius: var(--radius); cursor: pointer; transition: background .12s; }
+/* Notifications — compact cards, distinct from one another but not bulky */
+.notif-list { display: flex; flex-direction: column; gap: 3px; padding: 2px; }
+.notif-row {
+  position: relative;
+  display: flex; gap: 8px; align-items: flex-start;
+  padding: 7px 9px 7px 11px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
 .notif-row:hover { background: var(--bg-hover); }
-.notif-row.is-unread { background: var(--bg-surface); }
-.notif-dot { width: 8px; height: 8px; margin-top: 6px; border-radius: 999px; flex-shrink: 0; }
-.notif-kind { font-size: 0.72rem; font-weight: 600; color: var(--accent-text); }
+/* Unread: accent left-edge + tinted surface, so read vs unread is obvious at a glance */
+.notif-row.is-unread { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 22%, transparent); }
+.notif-row.is-unread::before {
+  content: ''; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--accent);
+}
+/* Type icon chip replaces the bare dot */
+.notif-dot { display: none; }
+.notif-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; flex-shrink: 0; border-radius: 7px;
+  background: var(--bg-hover); color: var(--accent-text); font-size: 0.8rem; font-weight: 700;
+}
+.notif-row.is-unread .notif-icon { background: var(--accent); color: var(--accent-contrast); }
+.notif-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.notif-kind { font-size: 0.72rem; font-weight: 700; color: var(--text-primary); }
+.notif-row.is-unread .notif-kind { color: var(--accent-text); }
+.notif-where {
+  font-size: 0.68rem; color: var(--text-muted); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;
+}
 
 /* ── Message enter animation ────────────────────────────────────────────────── */
 @keyframes msg-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

@@ -33,6 +33,9 @@
           @if (row.showHeader) {
             <div class="bub-header">
               <span class="bub-author">{{ authorName(row.msg.authorId) }}</span>
+              @if (authorStatusEmoji(row.msg.authorId); as se) {
+                <span class="bub-status-emoji" [title]="authorStatusText(row.msg.authorId)">{{ se }}</span>
+              }
               <span class="bub-ts">{{ row.msg.createdAt | date:'HH:mm' }}</span>
             </div>
           }
@@ -44,21 +47,25 @@
           } @else if (editingId() === row.msg.id) {
             <ng-container *ngTemplateOutlet="editBoxTpl; context: { $implicit: row }" />
           } @else {
-            <div class="bubble bubble-them"
-                 [class.bubble-mentions-me]="row.mentionsMe"
-                 [class.bubble-first]="row.showHeader"
-                 [class.bubble-continued]="!row.showHeader"
-                 [class.bubble-last]="!row.isContinued"
-                 [title]="row.msg.createdAt | date:'medium'"
-                 [innerHTML]="row.html">
+            <div class="bubble-wrap">
+              <ng-container *ngTemplateOutlet="quoteTpl; context: { $implicit: row }" />
+              <div class="bubble bubble-them"
+                   [class.bubble-mentions-me]="row.mentionsMe"
+                   [class.bubble-first]="row.showHeader"
+                   [class.bubble-continued]="!row.showHeader"
+                   [class.bubble-last]="!row.isContinued"
+                   [title]="row.msg.createdAt | date:'medium'"
+                   [innerHTML]="row.html">
+              </div>
+              <ng-container *ngTemplateOutlet="hoverTpl; context: { $implicit: row }" />
             </div>
-            <ng-container *ngTemplateOutlet="actionsTpl; context: { $implicit: row }" />
           }
           @if (!row.isDeleted && !row.isContinued && row.msg.editedAt) {
             <span class="bub-edited">edited</span>
           }
           @if (!row.isDeleted) {
             <ng-container *ngTemplateOutlet="reactionsTpl; context: { $implicit: row }" />
+            <ng-container *ngTemplateOutlet="threadTpl; context: { $implicit: row }" />
           }
         </div>
       </div>
@@ -87,20 +94,24 @@
           } @else if (editingId() === row.msg.id) {
             <ng-container *ngTemplateOutlet="editBoxTpl; context: { $implicit: row }" />
           } @else {
-            <div class="bubble bubble-me"
-                 [class.bubble-first]="row.showHeader"
-                 [class.bubble-continued]="!row.showHeader"
-                 [class.bubble-last]="!row.isContinued"
-                 [title]="row.msg.createdAt | date:'medium'"
-                 [innerHTML]="row.html">
+            <div class="bubble-wrap bubble-wrap-me">
+              <ng-container *ngTemplateOutlet="quoteTpl; context: { $implicit: row }" />
+              <div class="bubble bubble-me"
+                   [class.bubble-first]="row.showHeader"
+                   [class.bubble-continued]="!row.showHeader"
+                   [class.bubble-last]="!row.isContinued"
+                   [title]="row.msg.createdAt | date:'medium'"
+                   [innerHTML]="row.html">
+              </div>
+              <ng-container *ngTemplateOutlet="hoverTpl; context: { $implicit: row }" />
             </div>
-            <ng-container *ngTemplateOutlet="actionsTpl; context: { $implicit: row }" />
           }
           @if (!row.isDeleted && !row.isContinued && row.msg.editedAt) {
             <span class="bub-edited bub-edited-me">edited</span>
           }
           @if (!row.isDeleted) {
             <ng-container *ngTemplateOutlet="reactionsTpl; context: { $implicit: row }" />
+            <ng-container *ngTemplateOutlet="threadTpl; context: { $implicit: row }" />
           }
         </div>
       </div>
@@ -129,9 +140,8 @@
      One chip per emoji with a count; the viewer's own are highlighted and a click removes them.
      The add button appears on row hover (or while its picker is open) so it costs no space otherwise. -->
 <ng-template #reactionsTpl let-row>
-  @if (row.reactions.length || canReact()) {
-    <div class="bub-reactions" [class.bub-reactions-me]="row.isOwn"
-         [class.bub-reactions-empty]="!row.reactions.length">
+  @if (row.reactions.length) {
+    <div class="bub-reactions" [class.bub-reactions-me]="row.isOwn">
       @for (g of row.reactions; track g.emoji) {
         <button type="button" class="reaction-chip"
                 [class.reaction-chip-mine]="g.mine"
@@ -143,12 +153,23 @@
           <span class="reaction-count">{{ g.count }}</span>
         </button>
       }
+    </div>
+  }
+</ng-template>
+
+<!-- ── Floating hover toolbar (Slack-style): react + more, top-right of the bubble ──── -->
+<ng-template #hoverTpl let-row>
+  @if (canReact() || row.canEdit || row.canDelete) {
+    <div class="msg-toolbar"
+         [class.msg-toolbar-open]="pickerFor() === row.msg.id || menuFor() === row.msg.id">
       @if (canReact()) {
-        <div class="reaction-add-wrap" [class.reaction-add-open]="pickerFor() === row.msg.id"
-             (mouseleave)="pickerFor() === row.msg.id && togglePicker(row.msg.id)">
-          <button type="button" class="reaction-add" title="Add reaction" aria-label="Add reaction"
-                  (click)="togglePicker(row.msg.id)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        @for (e of quickEmojis.slice(0, 3); track e) {
+          <button type="button" class="tb-btn tb-emoji" [title]="'React ' + e" (click)="toggle(row.msg.id, e)">{{ e }}</button>
+        }
+        <div class="tb-pop-wrap">
+          <button type="button" class="tb-btn" title="Add reaction" aria-label="Add reaction"
+                  [attr.aria-expanded]="pickerFor() === row.msg.id" (click)="togglePicker(row.msg.id)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
           </button>
           @if (pickerFor() === row.msg.id) {
             <div class="reaction-picker" role="menu" aria-label="Pick a reaction">
@@ -159,23 +180,43 @@
           }
         </div>
       }
-    </div>
-  }
-</ng-template>
-
-<!-- ── Message actions (edit/delete) — appear on row hover ─────────────────── -->
-<ng-template #actionsTpl let-row>
-  @if (row.canEdit || row.canDelete) {
-    <div class="msg-actions" [class.msg-actions-me]="row.isOwn">
-      @if (row.canEdit) {
-        <button type="button" class="msg-action" title="Edit" aria-label="Edit message" (click)="startEdit(row)">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        </button>
-      }
-      @if (row.canDelete) {
-        <button type="button" class="msg-action msg-action-danger" title="Delete" aria-label="Delete message" (click)="confirmDelete(row.msg.id)">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        </button>
+      @if (canReact() || row.canEdit || row.canDelete) {
+        <div class="tb-pop-wrap">
+          <button type="button" class="tb-btn" title="More actions" aria-label="More actions"
+                  [attr.aria-expanded]="menuFor() === row.msg.id" (click)="toggleMenu(row.msg.id)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+          </button>
+          @if (menuFor() === row.msg.id) {
+            <div class="msg-menu" role="menu" aria-label="Message actions">
+              @if (canReact()) {
+                <button type="button" class="msg-menu-item" role="menuitem" (click)="pickReply(row.msg.id)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                  <span>Reply</span>
+                </button>
+                <button type="button" class="msg-menu-item" role="menuitem" (click)="pickForward(row.msg.id)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+                  <span>Forward</span>
+                </button>
+                <button type="button" class="msg-menu-item" role="menuitem" (click)="pickPin(row)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.5-4.5V5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7.5L5 17z"/></svg>
+                  <span>{{ row.isPinned ? 'Unpin' : 'Pin' }}</span>
+                </button>
+              }
+              @if (row.canEdit) {
+                <button type="button" class="msg-menu-item" role="menuitem" (click)="startEdit(row)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  <span>Edit message</span>
+                </button>
+              }
+              @if (row.canDelete) {
+                <button type="button" class="msg-menu-item msg-menu-item-danger" role="menuitem" (click)="confirmDelete(row.msg.id)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  <span>Delete message</span>
+                </button>
+              }
+            </div>
+          }
+        </div>
       }
     </div>
   }
@@ -193,4 +234,31 @@
     </div>
     <span class="msg-edit-hint">Enter to save · Esc to cancel</span>
   </div>
+</ng-template>
+
+<!-- ── Thread summary ("N replies") under a top-level message ──────────────── -->
+<ng-template #threadTpl let-row>
+  @if (!row.isDeleted && row.msg.replyCount) {
+    <button type="button" class="thread-link" [class.thread-link-me]="row.isOwn" (click)="openThread.emit(row.msg.id)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      <span class="thread-count">{{ row.msg.replyCount }} {{ row.msg.replyCount === 1 ? 'reply' : 'replies' }}</span>
+      @if (row.msg.lastReplyAt) { <span class="thread-last">· {{ row.msg.lastReplyAt | date:'HH:mm' }}</span> }
+    </button>
+  }
+</ng-template>
+
+<!-- ── Quote-reply preview + forwarded label, shown inside the bubble body ───── -->
+<ng-template #quoteTpl let-row>
+  @if (row.forwarded) {
+    <div class="msg-forwarded">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+      <span>Forwarded</span>
+    </div>
+  }
+  @if (row.quoted; as q) {
+    <button type="button" class="msg-quote" (click)="scrollToMessage(q.id)" title="Go to quoted message">
+      <span class="msg-quote-author">{{ authorName(q.authorId) }}</span>
+      <span class="msg-quote-body">{{ quotedPreview(q) }}</span>
+    </button>
+  }
 </ng-template>

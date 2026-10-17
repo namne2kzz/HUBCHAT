@@ -19,4 +19,6 @@ public sealed record PostMessageCommand(
     Guid? ParentId,
     IReadOnlyList<Guid> MentionedUserIds,
     Guid ActingUserId,
-    Guid? ClientMessageId = null) : IRequest<MessageDto>;
+    Guid? ClientMessageId = null,
+    /// <summary>Quote-reply target: the message this one quotes (distinct from a thread parent).</summary>
+    Guid? ReplyToId = null) : IRequest<MessageDto>;

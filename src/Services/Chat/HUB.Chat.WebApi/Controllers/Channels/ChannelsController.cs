@@ -5,6 +5,7 @@ using HUB.Chat.Application.Channels.Commands.JoinChannel;
 using HUB.Chat.Application.Channels.Commands.LeaveChannel;
 using HUB.Chat.Application.Channels.Commands.MarkRead;
 using HUB.Chat.Application.Channels.Commands.OpenDirectMessage;
+using HUB.Chat.Application.Channels.Commands.ArchiveChannel;
 using HUB.Chat.Application.Channels.Commands.OpenLinkedThread;
 using HUB.Chat.Application.Channels.Commands.ChangeChannelVisibility;
 using HUB.Chat.Application.Channels.Commands.TransferOwnership;
@@ -173,6 +174,32 @@ public sealed class ChannelsController(ISender mediator, ICurrentUser currentUse
     {
         var dto = await mediator.Send(new ChangeChannelVisibilityCommand(id, request.IsPrivate, currentUser.Id), ct);
         return Ok(dto);
+    }
+
+    /// <summary>Archives a channel (Owner/Admin only). Archived channels are read-only.</summary>
+    /// <param name="id">Channel id.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>204 on success; 403 if not a channel moderator.</returns>
+    [HttpPost("{id:guid}/archive")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
+    {
+        await mediator.Send(new ArchiveChannelCommand(id, Archive: true, currentUser.Id), ct);
+        return NoContent();
+    }
+
+    /// <summary>Reopens an archived channel (Owner/Admin only).</summary>
+    /// <param name="id">Channel id.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>204 on success; 403 if not a channel moderator.</returns>
+    [HttpDelete("{id:guid}/archive")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Unarchive(Guid id, CancellationToken ct)
+    {
+        await mediator.Send(new ArchiveChannelCommand(id, Archive: false, currentUser.Id), ct);
+        return NoContent();
     }
 
     /// <summary>Transfers channel ownership to another member (owner only). The caller becomes an Admin.</summary>

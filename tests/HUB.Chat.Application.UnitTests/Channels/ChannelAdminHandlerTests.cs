@@ -9,6 +9,7 @@ using HUB.Chat.Domain.Entities;
 using HUB.Chat.Domain.Enums;
 using HUB.Chat.Infrastructure.Persistence;
 using HUB.TestKit.Db;
+using HUB.TestKit.Fakes;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;
 using Xunit;
@@ -328,42 +329,19 @@ public sealed class ChannelAdminHandlerTests
             new TransferOwnershipCommand(channel.Id, owner, owner), CancellationToken.None));
     }
 
-    // ── Archive ─────────────────────────────────────────────────────────────
+    // ── Archive ───────────────────────────────────────────────────────────────
+    // The public (actor) path, idempotency and reopen live in ArchiveChannelHandlerTests.
+    // Here we only guard the trusted internal path DASHBOARD relies on: no actor, no check.
 
-    [Fact]
-    public async Task ArchivingClosesTheChannelToNewMessages()
-    {
-        await using var lease = await ChatDbContextFactory.CreateAsync();
-        var channel = await SeedAsync(lease.Context, Guid.NewGuid());
-
-        await new ArchiveChannelHandler(lease.Context)
-            .Handle(new ArchiveChannelCommand(channel.Id), CancellationToken.None);
-
-        (await ReloadAsync(lease, channel.Id)).IsArchived.ShouldBeTrue();
-    }
-
-    [Fact]
-    public async Task ArchivingTwiceIsIdempotent()
-    {
-        await using var lease = await ChatDbContextFactory.CreateAsync();
-        var channel = await SeedAsync(lease.Context, Guid.NewGuid());
-
-        var handler = new ArchiveChannelHandler(lease.Context);
-        var command = new ArchiveChannelCommand(channel.Id);
-
-        await handler.Handle(command, CancellationToken.None);
-        await Should.NotThrowAsync(() => handler.Handle(command, CancellationToken.None));
-
-        // DASHBOARD calls this when a sprint closes and has no memory of whether it called before.
-        (await ReloadAsync(lease, channel.Id)).IsArchived.ShouldBeTrue();
-    }
+    private static ArchiveChannelHandler NewArchiveHandler(ChatDbContextLease lease) =>
+        new(lease.Context, new RecordingEventPublisher(), new FakeWorkspacePermissions());
 
     [Fact]
     public async Task ArchivingAMissingChannelIsNotFound()
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();
 
-        await Should.ThrowAsync<NotFoundException>(() => new ArchiveChannelHandler(lease.Context)
+        await Should.ThrowAsync<NotFoundException>(() => NewArchiveHandler(lease)
             .Handle(new ArchiveChannelCommand(Guid.NewGuid()), CancellationToken.None));
     }
 }

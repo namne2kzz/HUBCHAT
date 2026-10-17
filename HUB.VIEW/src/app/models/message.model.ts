@@ -47,6 +47,12 @@ export interface MessageDto {
   createdAt: string;
   /** True when the message is a deletion tombstone — render "message deleted"; body is empty. */
   isDeleted?: boolean;
+  /** True when the message is pinned in its channel. */
+  isPinned?: boolean;
+  /** Replies in this message's thread (channel list only; 0 for replies themselves). */
+  replyCount?: number;
+  /** Newest reply time, for the "N replies · 2m ago" hint; null when none. */
+  lastReplyAt?: string | null;
 }
 
 /** POST /api/v1/channels/{channelId}/messages body. */
@@ -57,6 +63,8 @@ export interface PostMessageRequest {
   mentionedUserIds?: string[];
   /** Idempotency key (UUID) for this send; the same key on a retry returns the original message. */
   clientMessageId?: string;
+  /** Quote-reply target: the message this one quotes (shown as a preview above the new message). */
+  replyToId?: string;
 }
 
 /** Backend keyset page: HUB.Chat.Application.Common.Models.CursorPage<T> — items + nextCursor only. */

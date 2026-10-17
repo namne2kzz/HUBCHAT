@@ -4,6 +4,7 @@
 
 | Ngày | Giờ | Title | Thay đổi |
 |------|-----|-------|----------|
+| 2026-10-14 | — | Archive/Reopen có phân quyền (CF-13) | `ArchiveChannel` nhận `ActingUserId?`: user bấm nút ⇒ chỉ **Owner/Admin** (check `EnsureCanManageMembersAsync`); caller internal (sprint đóng) truyền `null` ⇒ bỏ qua check. Thêm `Unarchive()` (reopen). Cả hai idempotent (trả `bool`), chỉ phát `ChannelArchivedChanged(ChannelId, IsArchived)` khi thực sự đổi. UI kênh archived ⇒ read-only. |
 | 2026-10-04 | — | Find-or-create chống race (MP-3) | Unique `(WorkspaceId, LinkType, LinkExternalId)` (lọc NULL) thay index thường. OpenLinkedThread / FindOrCreateSprintChannel / OpenDirectMessage: 2 request đồng thời → 1 kênh, request thua đọc lại kênh thắng (linked thread: vẫn thêm caller làm member). Migration gỡ link khỏi các thread trùng cũ (giữ cái cũ nhất). Unique violation chưa xử lý → 409 thay vì 500. |
 | 2026-08-02 | 13:38 | P3 linked thread | Channel có thể link tới DASHBOARD resource (work item): OpenLinkedThread find-or-create, LinkType/LinkExternalId/Key/Url |
 | 2026-08-01 | 20:18 | Khởi tạo document | Tạo doc business ban đầu cho feature Channels (P1) |
@@ -24,6 +25,7 @@ Kênh chat trong 1 workspace (= Repository/Project của DASHBOARD) để team t
 - Người tạo tự động là **Owner** (`ChannelMemberRole.Owner`).
 - Không thêm trùng member (1 user 1 lần trong 1 kênh) — `AddMember` throw `DomainException` nếu đã có.
 - Kênh `IsArchived` ⇒ read-only: `EnsureWritable()` chặn post message.
+- **Archive/Reopen** chỉ **Owner/Admin** khi do user thực hiện (`ArchiveChannelCommand.ActingUserId` non-null ⇒ check). Caller internal (DASHBOARD đóng sprint) truyền `null` ⇒ không check. Idempotent: archive/reopen lặp lại không phát event lần hai.
 - Unique `(WorkspaceId, Slug)`.
 - 1 DASHBOARD resource ↔ tối đa 1 thread / workspace: unique `(WorkspaceId, LinkType, LinkExternalId)`.
 - Find-or-create (linked thread, sprint channel, DM) **an toàn khi đồng thời**: insert thua race không lỗi mà trả về kênh đã được tạo.

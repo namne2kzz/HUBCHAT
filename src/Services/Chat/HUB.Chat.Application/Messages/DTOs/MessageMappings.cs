@@ -13,7 +13,7 @@ public static class MessageMappings
         // content — body, reactions and attachments are dropped so they cannot leak after deletion.
         ? new(m.Id, m.ChannelId, m.ParentId, m.ReplyToId, m.ForwardedFromId, m.AuthorId,
               Body: string.Empty, m.Format, Mentions: [], Reactions: [], Attachments: [],
-              EditedAt: null, m.CreatedAt, IsDeleted: true)
+              EditedAt: null, m.CreatedAt, IsDeleted: true, IsPinned: false)
         : new(
             m.Id,
             m.ChannelId,
@@ -28,5 +28,6 @@ public static class MessageMappings
             m.Attachments.Select(a => new AttachmentDto(a.Id, a.Kind, a.Url, a.Name, a.Size, a.Mime, a.Width, a.Height)).ToList(),
             m.EditedAt,
             m.CreatedAt,
-            IsDeleted: false);
+            IsDeleted: false,
+            IsPinned: m.IsPinned);
 }

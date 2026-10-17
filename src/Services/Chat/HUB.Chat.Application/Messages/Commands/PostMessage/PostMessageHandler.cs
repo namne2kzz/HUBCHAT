@@ -42,7 +42,7 @@ public sealed class PostMessageHandler(IChatDbContext db, IIntegrationEventPubli
 
         var message = Message.Post(
             request.ChannelId, request.ActingUserId, request.Body, request.Format,
-            parentId: request.ParentId, mentions: channel.MentionableAmong(request.MentionedUserIds),
+            parentId: request.ParentId, replyToId: request.ReplyToId, mentions: channel.MentionableAmong(request.MentionedUserIds),
             clientMessageId: request.ClientMessageId);
 
         db.Messages.Add(message);

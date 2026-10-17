@@ -31,6 +31,54 @@ export class MessageService {
    * @param limit Page size (1..100). Default 100.
    * @returns Newer messages, oldest first. Errors with 404 when the anchor is unknown (reload instead).
    */
+  /**
+   * Lists the replies of a thread (GET /channels/{id}/messages/{messageId}/replies), oldest first.
+   * @param channelId Channel the thread lives in.
+   * @param messageId The top-level message whose thread to open.
+   * @returns The thread's replies.
+   */
+  listReplies(channelId: string, messageId: string): Observable<MessageDto[]> {
+    return this.http.get<MessageDto[]>(`${this.channelUrl(channelId)}/${messageId}/replies`);
+  }
+
+  /**
+   * Forwards a message into another channel (POST /messages/{id}/forward).
+   * @param messageId Source message to forward.
+   * @param targetChannelId Channel to forward it into.
+   * @returns The forwarded message in the target channel.
+   */
+  forward(messageId: string, targetChannelId: string): Observable<MessageDto> {
+    return this.http.post<MessageDto>(`${this.config.apiBaseUrl}/messages/${messageId}/forward`, { targetChannelId });
+  }
+
+  /**
+   * Searches a channel's full message history (GET /channels/{id}/messages/search).
+   * @param channelId Channel to search.
+   * @param term Search text.
+   * @param limit Max results (default 30).
+   * @returns Matching messages, newest first.
+   */
+  search(channelId: string, term: string, limit = 30): Observable<MessageDto[]> {
+    return this.http.get<MessageDto[]>(`${this.channelUrl(channelId)}/search`, {
+      params: new HttpParams().set('q', term).set('limit', limit),
+    });
+  }
+
+  /** Pins a message (POST /messages/{id}/pin). @param messageId Message id. @returns Completes on success. */
+  pin(messageId: string): Observable<void> {
+    return this.http.post<void>(`${this.config.apiBaseUrl}/messages/${messageId}/pin`, {});
+  }
+
+  /** Unpins a message (DELETE /messages/{id}/pin). @param messageId Message id. @returns Completes on success. */
+  unpin(messageId: string): Observable<void> {
+    return this.http.delete<void>(`${this.config.apiBaseUrl}/messages/${messageId}/pin`);
+  }
+
+  /** Lists a channel's pinned messages (GET /channels/{id}/messages/pinned). @param channelId Channel id. */
+  listPinned(channelId: string): Observable<MessageDto[]> {
+    return this.http.get<MessageDto[]>(`${this.channelUrl(channelId)}/pinned`);
+  }
+
   listAfter(channelId: string, afterMessageId: string, limit = 100): Observable<MessageDto[]> {
     return this.http.get<MessageDto[]>(`${this.channelUrl(channelId)}/after/${afterMessageId}`, {
       params: new HttpParams().set('limit', limit),

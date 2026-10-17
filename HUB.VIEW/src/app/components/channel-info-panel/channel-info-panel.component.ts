@@ -4,6 +4,7 @@ import {
 import { DatePipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ChannelService } from '../../services/channel.service';
+import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { ChannelDto, ChannelMemberRole, ChannelType } from '../../models/channel.model';
 import { ChannelMembersPanelComponent } from '../channel-members-panel/channel-members-panel.component';
 
@@ -26,6 +27,7 @@ type InfoTab = 'about' | 'members' | 'settings';
 export class ChannelInfoPanelComponent implements OnInit {
   private readonly channelSvc = inject(ChannelService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly confirmDialog = inject(ConfirmDialogService);
 
   readonly channel       = input.required<ChannelDto>();
   readonly channelId     = input.required<string>();
@@ -44,9 +46,12 @@ export class ChannelInfoPanelComponent implements OnInit {
   readonly visibilityChanged = output<boolean>();
   /** Emitted after ownership is transferred (payload = new owner's user id). */
   readonly ownershipTransferred = output<string>();
+  /** Emitted after archive/reopen so the parent can refresh its channel copy. */
+  readonly archivedChanged = output<boolean>();
 
   /** True while a visibility change is in flight. */
   protected readonly changingVisibility = signal(false);
+  protected readonly archiving = signal(false);
 
   /** True when the channel is currently private (drives the Settings toggle). */
   protected get isPrivate(): boolean {
@@ -78,6 +83,33 @@ export class ChannelInfoPanelComponent implements OnInit {
   /** True when the current user owns the channel — owners can't leave (must transfer first). */
   protected get isOwner(): boolean {
     return this.channel().myRole === ChannelMemberRole.Owner;
+  }
+
+  /** True when the current user may archive/reopen the channel (Owner or Admin). */
+  protected get canArchive(): boolean {
+    const r = this.channel().myRole;
+    return r === ChannelMemberRole.Owner || r === ChannelMemberRole.Admin;
+  }
+
+  /** Archives (or reopens) the channel after confirming. */
+  protected async toggleArchive(): Promise<void> {
+    if (this.archiving()) return;
+    const archived = this.channel().isArchived;
+    if (!archived) {
+      const ok = await this.confirmDialog.confirm({
+        title: 'Archive channel?',
+        description: 'The channel becomes read-only — no new messages. You can reopen it later.',
+        confirmText: 'Archive',
+        tone: 'warning',
+      });
+      if (!ok) return;
+    }
+    this.archiving.set(true);
+    const call = archived ? this.channelSvc.unarchive(this.channelId()) : this.channelSvc.archive(this.channelId());
+    call.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => { this.archiving.set(false); this.archivedChanged.emit(!archived); },
+      error: () => this.archiving.set(false),
+    });
   }
 
   protected startEditTopic(): void {

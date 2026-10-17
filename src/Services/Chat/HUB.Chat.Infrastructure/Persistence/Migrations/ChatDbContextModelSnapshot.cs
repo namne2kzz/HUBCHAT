@@ -215,6 +215,12 @@ namespace HUB.Chat.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ParentId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("PinnedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("PinnedBy")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("ReplyToId")
                         .HasColumnType("uuid");
 
@@ -235,6 +241,9 @@ namespace HUB.Chat.Infrastructure.Persistence.Migrations
                         .HasFilter("\"ClientMessageId\" IS NOT NULL");
 
                     b.HasIndex("ChannelId", "CreatedAt");
+
+                    b.HasIndex("ChannelId", "PinnedAt")
+                        .HasFilter("\"PinnedAt\" IS NOT NULL");
 
                     b.ToTable("messages", (string)null);
                 });

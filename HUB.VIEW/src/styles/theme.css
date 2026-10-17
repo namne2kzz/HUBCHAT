@@ -94,8 +94,8 @@
   --accent-contrast: var(--gray-0);
   --accent-gradient: var(--orange-500);
 
-  /* Bong bong chat - minh = cam dac, doi phuong = xam nhat */
-  --bubble-me-bg:       var(--orange-500);
+  /* Bong bong chat - minh = cam (diu bot cho do choi), doi phuong = xam nhat */
+  --bubble-me-bg:       color-mix(in srgb, var(--orange-500) 88%, #ffffff);
   --bubble-me-text:     var(--gray-0);
   --bubble-me-border:   transparent;
   --bubble-them-bg:     var(--gray-50);
@@ -167,7 +167,7 @@
   --accent-contrast: var(--ink);
   --accent-gradient: var(--orange-400);
 
-  --bubble-me-bg:       var(--orange-400);
+  --bubble-me-bg:       color-mix(in srgb, var(--orange-400) 86%, #000000);
   --bubble-me-text:     var(--ink);
   --bubble-me-border:   transparent;
   --bubble-them-bg:     var(--gray-900);

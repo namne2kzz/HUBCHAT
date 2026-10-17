@@ -78,6 +78,12 @@
         } @else {
           <p class="info-owner-note">You own this channel — transfer ownership to leave.</p>
         }
+
+        @if (canArchive) {
+          <button class="info-archive" [disabled]="archiving()" (click)="toggleArchive()">
+            {{ channel().isArchived ? 'Reopen channel' : 'Archive channel' }}
+          </button>
+        }
       }
     }
 

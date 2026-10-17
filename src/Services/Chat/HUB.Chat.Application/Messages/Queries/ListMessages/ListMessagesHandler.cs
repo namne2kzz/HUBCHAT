@@ -40,7 +40,18 @@ public sealed class ListMessagesHandler(IChatDbContext db) : IRequestHandler<Lis
             .Take(limit)
             .ToListAsync(ct);
 
-        var items = messages.Select(m => m.ToDto()).ToList();
+        // Thread summary (reply count + newest reply time) for this page's messages, in one grouped query —
+        // not one per message. Replies are messages whose ParentId is a message on this page.
+        var ids = messages.Select(m => m.Id).ToList();
+        var threads = await db.Messages.AsNoTracking()
+            .Where(r => r.ParentId != null && ids.Contains(r.ParentId.Value) && r.DeletedAt == null)
+            .GroupBy(r => r.ParentId!.Value)
+            .Select(g => new { ParentId = g.Key, Count = g.Count(), LastReplyAt = (DateTime?)g.Max(r => r.CreatedAt) })
+            .ToDictionaryAsync(x => x.ParentId, ct);
+
+        var items = messages.Select(m => threads.TryGetValue(m.Id, out var t)
+            ? m.ToDto() with { ReplyCount = t.Count, LastReplyAt = t.LastReplyAt }
+            : m.ToDto()).ToList();
 
         string? next = items.Count == limit
             ? new MessageCursor(items[^1].CreatedAt, items[^1].Id).Encode()

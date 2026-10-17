@@ -53,6 +53,7 @@ describe('MessageInputComponent', () => {
   };
 
   beforeEach(async () => {
+    localStorage.clear(); // drafts (CF-17) persist here; isolate each test
     await TestBed.configureTestingModule({ imports: [MessageInputComponent] }).compileComponents();
 
     fixture = TestBed.createComponent(MessageInputComponent);
@@ -61,6 +62,8 @@ describe('MessageInputComponent', () => {
     component.send.subscribe(v => sent.push(v));
     fixture.detectChanges();
   });
+
+  afterEach(() => localStorage.clear());
 
   it('should create', () => expect(component).toBeTruthy());
 
@@ -447,6 +450,48 @@ describe('MessageInputComponent', () => {
       type('```');                          // enters code mode
       type('@an');
       expect(list().length).toBe(0);
+    });
+  });
+
+  describe('drafts (CF-17)', () => {
+    const setChannel = (id: string) => {
+      fixture.componentRef.setInput('channelId', id);
+      fixture.detectChanges();
+    };
+
+    it('persists the draft while typing and restores it on return', () => {
+      setChannel('c1');
+      type('half a thought');
+
+      // Leave to another channel, then come back.
+      setChannel('c2');
+      expect(inner().body()).toBe('');     // c2 has no draft
+      setChannel('c1');
+
+      expect(inner().body()).toBe('half a thought');
+    });
+
+    it('keeps drafts separate per channel', () => {
+      setChannel('c1');
+      type('for one');
+      setChannel('c2');
+      type('for two');
+
+      setChannel('c1');
+      expect(inner().body()).toBe('for one');
+      setChannel('c2');
+      expect(inner().body()).toBe('for two');
+    });
+
+    it('clears the draft after sending', () => {
+      setChannel('c1');
+      type('ready to send');
+      inner().submit();
+
+      expect(sent.length).toBe(1);
+      setChannel('c2');
+      setChannel('c1');
+      expect(inner().body()).toBe('');     // the sent draft is gone, not restored
     });
   });
 });

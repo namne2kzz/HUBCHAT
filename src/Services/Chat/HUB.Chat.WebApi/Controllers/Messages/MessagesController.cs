@@ -3,10 +3,15 @@ using HUB.Chat.Application.Messages.Commands.AddReaction;
 using HUB.Chat.Application.Messages.Commands.PostMessage;
 using HUB.Chat.Application.Messages.Commands.DeleteMessage;
 using HUB.Chat.Application.Messages.Commands.EditMessage;
+using HUB.Chat.Application.Messages.Commands.ForwardMessage;
 using HUB.Chat.Application.Messages.Commands.RemoveReaction;
 using HUB.Chat.Application.Messages.DTOs;
 using HUB.Chat.Application.Messages.Queries.ListMessages;
 using HUB.Chat.Application.Messages.Queries.ListMessagesAfter;
+using HUB.Chat.Application.Messages.Commands.PinMessage;
+using HUB.Chat.Application.Messages.Queries.ListPinnedMessages;
+using HUB.Chat.Application.Messages.Queries.ListThreadReplies;
+using HUB.Chat.Application.Messages.Queries.SearchMessages;
 using HUB.Chat.WebApi.Controllers.Messages.Requests;
 using HUB.Shared.Auth;
 using MediatR;
@@ -37,7 +42,7 @@ public sealed class MessagesController(ISender mediator, ICurrentUser currentUse
     {
         var dto = await mediator.Send(new PostMessageCommand(
             channelId, request.Body, request.Format, request.ParentId,
-            request.MentionedUserIds ?? [], currentUser.Id, request.ClientMessageId), ct);
+            request.MentionedUserIds ?? [], currentUser.Id, request.ClientMessageId, request.ReplyToId), ct);
         return StatusCode(StatusCodes.Status201Created, dto);
     }
 
@@ -68,6 +73,85 @@ public sealed class MessagesController(ISender mediator, ICurrentUser currentUse
     {
         var result = await mediator.Send(
             new ListMessagesAfterQuery(channelId, currentUser.Id, messageId, limit == 0 ? 100 : limit), ct);
+        return Ok(result);
+    }
+
+    /// <summary>Pins a message in its channel (any member).</summary>
+    /// <param name="messageId">Message to pin.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>204 on success; 403 if not a member.</returns>
+    [HttpPost("messages/{messageId:guid}/pin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Pin(Guid messageId, CancellationToken ct)
+    {
+        await mediator.Send(new PinMessageCommand(messageId, Pin: true, currentUser.Id), ct);
+        return NoContent();
+    }
+
+    /// <summary>Unpins a message (any member).</summary>
+    /// <param name="messageId">Message to unpin.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>204 on success.</returns>
+    [HttpDelete("messages/{messageId:guid}/pin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Unpin(Guid messageId, CancellationToken ct)
+    {
+        await mediator.Send(new PinMessageCommand(messageId, Pin: false, currentUser.Id), ct);
+        return NoContent();
+    }
+
+    /// <summary>Lists a channel's pinned messages (most recently pinned first).</summary>
+    /// <param name="channelId">Channel id.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>200 with the pinned messages.</returns>
+    [HttpGet("channels/{channelId:guid}/messages/pinned")]
+    [ProducesResponseType<IReadOnlyList<MessageDto>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListPinned(Guid channelId, CancellationToken ct)
+    {
+        var result = await mediator.Send(new ListPinnedMessagesQuery(channelId, currentUser.Id), ct);
+        return Ok(result);
+    }
+
+    /// <summary>Searches a channel's full message history by text.</summary>
+    /// <param name="channelId">Channel to search.</param>
+    /// <param name="q">Search term.</param>
+    /// <param name="limit">Max results (1..50, default 30).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>200 with matching messages (newest first).</returns>
+    [HttpGet("channels/{channelId:guid}/messages/search")]
+    [ProducesResponseType<IReadOnlyList<MessageDto>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Search(Guid channelId, [FromQuery] string q, [FromQuery] int limit, CancellationToken ct)
+    {
+        var result = await mediator.Send(new SearchMessagesQuery(channelId, q ?? string.Empty, currentUser.Id, limit == 0 ? 30 : limit), ct);
+        return Ok(result);
+    }
+
+    /// <summary>Forwards a message into another channel.</summary>
+    /// <param name="messageId">Source message to forward.</param>
+    /// <param name="request">Target channel.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>201 with the forwarded message; 403 if not allowed; 404 if source/target missing.</returns>
+    [HttpPost("messages/{messageId:guid}/forward")]
+    [ProducesResponseType<MessageDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Forward(Guid messageId, [FromBody] ForwardMessageRequest request, CancellationToken ct)
+    {
+        var dto = await mediator.Send(new ForwardMessageCommand(messageId, request.TargetChannelId, currentUser.Id), ct);
+        return StatusCode(StatusCodes.Status201Created, dto);
+    }
+
+    /// <summary>Lists the replies of a thread (a top-level message), oldest first.</summary>
+    /// <param name="channelId">Channel id.</param>
+    /// <param name="messageId">The top-level message whose thread to open.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>200 with the thread's replies; 404 if the parent is not in this channel.</returns>
+    [HttpGet("channels/{channelId:guid}/messages/{messageId:guid}/replies")]
+    [ProducesResponseType<IReadOnlyList<MessageDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ListReplies(Guid channelId, Guid messageId, CancellationToken ct)
+    {
+        var result = await mediator.Send(new ListThreadRepliesQuery(channelId, messageId, currentUser.Id), ct);
         return Ok(result);
     }
 

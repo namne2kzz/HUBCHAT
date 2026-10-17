@@ -39,3 +39,18 @@
   font-weight: 700;
   color: var(--text-primary);
 }
+
+/* ── Notification pause presets / resume ───────────────────────────────────── */
+.mute-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mute-preset {
+  padding: 5px 10px; font-size: 0.8rem;
+  color: var(--text-primary); background: var(--bg-surface-2);
+  border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
+}
+.mute-preset:hover { border-color: var(--accent-text); color: var(--accent-text); }
+.settings-resume {
+  margin-top: 8px; padding: 6px 12px; font-size: 0.82rem;
+  color: var(--accent-contrast); background: var(--accent);
+  border: none; border-radius: 6px; cursor: pointer;
+}
+.settings-resume:hover { background: var(--accent-hover); }

@@ -158,3 +158,12 @@
 .vis-title { font-size: 0.86rem; font-weight: 600; color: var(--text-primary); }
 .vis-sub   { font-size: 0.72rem; color: var(--text-muted); margin-top: 1px; }
 .vis-check { color: var(--accent-text); flex-shrink: 0; }
+
+.info-archive {
+  margin-top: 8px; padding: 10px; width: 100%;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: transparent; color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  transition: border-color .12s, color .12s;
+  &:hover:not(:disabled) { border-color: var(--text-primary); color: var(--text-primary); }
+  &:disabled { opacity: 0.5; cursor: default; }
+}

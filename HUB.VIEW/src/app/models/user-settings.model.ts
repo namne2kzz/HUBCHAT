@@ -19,3 +19,17 @@ export interface QuietHours {
   /** Exclusive end time, "HH:mm" (24h). */
   end: string;
 }
+
+/**
+ * Notification preferences beyond presence. Client-side only (localStorage), like QuietHours.
+ * - `mutedUntilMs`: epoch ms; while now < this, notifications are off ("turn off until…"). 0 = not set.
+ * - `onlyWhenMentioned`: when notifications are otherwise muted, still notify for messages that @mention
+ *   the current user. Turning off the mute entirely silences everything; this is the one exception.
+ */
+export interface NotificationPrefs {
+  mutedUntilMs: number;
+  onlyWhenMentioned: boolean;
+}
+
+/** Preset "turn off until" durations offered in settings. */
+export type MuteDuration = '30m' | '1h' | '4h' | 'tomorrow' | 'forever';

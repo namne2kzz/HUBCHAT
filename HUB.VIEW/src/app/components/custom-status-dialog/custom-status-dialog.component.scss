@@ -1,0 +1,91 @@
+:host { display: contents; }
+
+.cs-backdrop {
+  position: fixed; inset: 0;
+  background: var(--bg-overlay);
+  z-index: 70;
+}
+.cs-dialog {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 71;
+  width: min(92vw, 420px);
+  max-height: 88vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px var(--bg-overlay);
+}
+
+.cs-head { display: flex; align-items: center; justify-content: space-between; }
+.cs-title { font-weight: 700; color: var(--text-primary); }
+.cs-close {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border: none; border-radius: 7px;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  &:hover { background: var(--bg-hover); color: var(--text-primary); }
+}
+
+.cs-row {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  padding: 4px 6px; background: var(--bg-surface);
+  &:focus-within { border-color: var(--accent-text); }
+}
+.cs-emoji {
+  width: 40px; text-align: center; font-size: 1.15rem;
+  border: none; background: transparent; outline: none;
+}
+.cs-text {
+  flex: 1; min-width: 0;
+  border: none; background: transparent; outline: none;
+  color: var(--text-primary); font-size: 0.9rem;
+}
+
+.cs-palette { display: flex; flex-wrap: wrap; gap: 4px; }
+.cs-palette-btn {
+  width: 34px; height: 34px; border-radius: 8px; font-size: 1.05rem;
+  border: 1px solid transparent; background: var(--bg-surface); cursor: pointer;
+  &:hover { background: var(--bg-hover); }
+  &.is-selected { border-color: var(--accent-text); background: var(--accent-soft); }
+}
+
+.cs-label {
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cs-presets { display: flex; flex-direction: column; gap: 4px; }
+.cs-preset {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 9px; cursor: pointer; text-align: left;
+  border: 1px solid transparent; background: transparent; color: var(--text-primary);
+  &:hover { background: var(--bg-hover); }
+}
+.cs-preset-emoji { font-size: 1.05rem; width: 22px; text-align: center; }
+.cs-preset-text { font-size: 0.86rem; }
+
+.cs-clear { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cs-select {
+  flex: 1; max-width: 190px;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 7px 10px; background: var(--bg-surface);
+  color: var(--text-primary); font-size: 0.85rem; outline: none;
+  &:focus { border-color: var(--accent-text); }
+}
+
+.cs-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
+.cs-ghost {
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px;
+  background: transparent; color: var(--text-secondary); font-size: 0.85rem; cursor: pointer;
+  &:hover:not(:disabled) { color: var(--text-primary); border-color: var(--text-primary); }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+.cs-save {
+  border: none; border-radius: 8px; padding: 8px 18px;
+  background: var(--accent); color: var(--accent-contrast); font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  &:hover:not(:disabled) { background: var(--accent-hover); }
+  &:disabled { opacity: 0.55; cursor: default; }
+}
