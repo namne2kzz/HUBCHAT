@@ -54,12 +54,21 @@ export interface ChannelReadEvent {
   readAt: string;
 }
 
+/** Pushed to the other DM participant when someone reads up to a point — drives "Seen" (CF-15). */
+export interface ReadReceiptEvent {
+  channelId: string;
+  userId: string;
+  readAt: string;
+}
+
 /** Mirrors HUB.Chat.Application.Channels.DTOs.ChannelMemberDto. */
 export interface ChannelMemberDto {
   userId: string;
   role: ChannelMemberRole;
   muted: boolean;
   joinedAt: string;
+  /** The member's read point — the DM "Seen" receipt (CF-15); null if never read. */
+  lastReadAt?: string | null;
 }
 
 /** POST /api/v1/channels body. */
@@ -97,4 +106,6 @@ export interface OpenLinkedThreadRequest {
  */
 export interface ChannelAccessRevokedEvent {
   channelId: string;
+  /** True when the channel was just made private (lock-down) — the client must close it, not offer "join". */
+  nowPrivate?: boolean;
 }

@@ -4,7 +4,7 @@ import { Subject } from 'rxjs';
 import { ConfigService } from '../core/services/config.service';
 import { AuthService } from './auth.service';
 import { MessageDeletedEvent, MessageEditedEvent, MessageReceivedEvent, ReactionAddedEvent, ReactionRemovedEvent, TypingEvent } from '../models/message.model';
-import { ChannelAccessRevokedEvent, ChannelReadEvent } from '../models/channel.model';
+import { ChannelAccessRevokedEvent, ChannelReadEvent, ReadReceiptEvent } from '../models/channel.model';
 import { NotificationReceivedEvent } from '../models/notification.model';
 import { CustomStatusChangedEvent, PresenceChangedEvent } from '../models/presence.model';
 
@@ -36,6 +36,8 @@ export class RealtimeService implements OnDestroy {
   readonly channelAccessRevoked$ = new Subject<ChannelAccessRevokedEvent>();
   /** The current user read a channel in another tab/device — clear its unread badge here too. */
   readonly channelRead$ = new Subject<ChannelReadEvent>();
+  /** The other DM participant read up to a point — drives the "Seen" receipt (CF-15). */
+  readonly readReceipt$ = new Subject<ReadReceiptEvent>();
   /** A message was pinned/unpinned in a channel. */
   readonly messagePinChanged$ = new Subject<{ messageId: string; channelId: string; isPinned: boolean }>();
   /**
@@ -152,6 +154,7 @@ export class RealtimeService implements OnDestroy {
     this.reactionRemoved$.complete();
     this.channelAccessRevoked$.complete();
     this.channelRead$.complete();
+    this.readReceipt$.complete();
     this.messagePinChanged$.complete();
     this.reconnected$.complete();
   }
@@ -180,6 +183,7 @@ export class RealtimeService implements OnDestroy {
     this.connection.on('reactionRemoved',      (e: ReactionRemovedEvent)      => this.reactionRemoved$.next(e));
     this.connection.on('channelAccessRevoked', (e: ChannelAccessRevokedEvent) => this.channelAccessRevoked$.next(e));
     this.connection.on('channelRead',          (e: ChannelReadEvent)          => this.channelRead$.next(e));
+    this.connection.on('readReceipt',          (e: ReadReceiptEvent)          => this.readReceipt$.next(e));
     this.connection.on('messagePinChanged',    (e: { messageId: string; channelId: string; isPinned: boolean }) => this.messagePinChanged$.next(e));
   }
 }

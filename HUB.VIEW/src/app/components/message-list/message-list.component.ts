@@ -10,6 +10,7 @@ import { MentionLabel, renderMarkdown } from '../../utils/markdown.util';
 import { groupReactions } from '../../utils/reaction.util';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { PresenceService } from '../../services/presence.service';
+import { AttachmentViewComponent } from '../attachment-view/attachment-view.component';
 
 interface MessageRow {
   msg: MessageDto;
@@ -49,7 +50,7 @@ interface MessageRow {
 @Component({
   selector: 'app-message-list',
   standalone: true,
-  imports: [DatePipe, NgTemplateOutlet],
+  imports: [DatePipe, NgTemplateOutlet, AttachmentViewComponent],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -120,6 +121,12 @@ export class MessageListComponent {
    * The corresponding bubble row receives the `bubble-row-highlight` class.
    */
   readonly highlightedId = input<string | null>(null);
+
+  /**
+   * DM "Seen" marker (CF-15): the other participant's read point in ms. The last of the viewer's own
+   * messages at or before this time shows a "Seen" label. 0 disables it (non-DM, or never read).
+   */
+  readonly seenAtMs = input<number>(0);
 
   /** Whether the viewer may react (channel members only — the API refuses non-members). */
   readonly canReact = input<boolean>(false);
@@ -294,6 +301,21 @@ export class MessageListComponent {
       const isPinned   = !!msg.isPinned;
       return { msg, showHeader, isOwn, isContinued, dateLabel, mentionsMe, reactions, isDeleted, canEdit, canDelete, quoted, forwarded, isPinned, html };
     });
+  });
+
+  /**
+   * Id of the viewer's own message under which to show "Seen" (CF-15): their most recent non-deleted
+   * message at or before the other participant's read point. Empty when there is nothing seen yet.
+   */
+  readonly seenMessageId = computed(() => {
+    const at = this.seenAtMs();
+    if (!at) return '';
+    const me = this.currentUserId();
+    let seenId = '';
+    for (const m of this.messages()) {
+      if (m.authorId === me && !m.isDeleted && new Date(m.createdAt).getTime() <= at) seenId = m.id;
+    }
+    return seenId;
   });
 
   /** Human day label for a date separator: "Today", "Yesterday", or a formatted date. */

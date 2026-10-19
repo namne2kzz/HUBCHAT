@@ -140,6 +140,16 @@
 }
 .bub-edited-me { align-self: flex-end; }
 
+/* "Seen" read receipt under the last own message in a DM (CF-15) */
+.bub-seen {
+  align-self: flex-end;
+  margin-top: 1px;
+  padding: 0 4px;
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 /* Reactions */
 .bub-reactions    { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
 .bub-reactions-me { justify-content: flex-end; }
@@ -220,6 +230,9 @@
    would silently not match (which is why code blocks did not scroll). Keep them global. */
 
 /* ── Reaction chips (under the bubble) ─────────────────────────────────────── */
+.bub-attachments { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; max-width: 100%; }
+.bub-attachments-me { align-items: flex-end; }
+
 .bub-reactions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
 .bub-reactions-me { justify-content: flex-end; }
 .reaction-chip {
@@ -339,13 +352,14 @@
 .reaction-pick:hover { background: var(--bg-hover); }
 
 /* ── More-actions context menu (compact) ───────────────────────────────────── */
-/* The scroll host clips horizontal overflow, so the menu must open toward the open chat area
-   (screen-centre), never toward the panel edge where it would be cut:
+/* The scroll host clips overflow in both axes, so the menu opens UPWARD (above the floating toolbar)
+   and toward the open chat area — never downward past the viewport bottom or toward the panel edge,
+   where it was being cut and the actions became unreachable:
    - received (left) messages → open rightward (align left edge to the … button)
    - own (right) messages     → open leftward  (align right edge to the … button) */
 .msg-menu {
   position: absolute;
-  top: calc(100% + 3px);
+  bottom: calc(100% + 3px);
   left: 0;
   right: auto;
   z-index: 17;

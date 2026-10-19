@@ -6,10 +6,12 @@ using HUB.Chat.Application.Messages.Commands.EditMessage;
 using HUB.Chat.Application.Messages.Commands.ForwardMessage;
 using HUB.Chat.Application.Messages.Commands.RemoveReaction;
 using HUB.Chat.Application.Messages.DTOs;
+using HUB.Chat.Application.Messages.Queries.ListChannelAttachments;
 using HUB.Chat.Application.Messages.Queries.ListMessages;
 using HUB.Chat.Application.Messages.Queries.ListMessagesAfter;
 using HUB.Chat.Application.Messages.Commands.PinMessage;
 using HUB.Chat.Application.Messages.Queries.ListPinnedMessages;
+using HUB.Chat.Domain.Enums;
 using HUB.Chat.Application.Messages.Queries.ListThreadReplies;
 using HUB.Chat.Application.Messages.Queries.SearchMessages;
 using HUB.Chat.WebApi.Controllers.Messages.Requests;
@@ -42,7 +44,8 @@ public sealed class MessagesController(ISender mediator, ICurrentUser currentUse
     {
         var dto = await mediator.Send(new PostMessageCommand(
             channelId, request.Body, request.Format, request.ParentId,
-            request.MentionedUserIds ?? [], currentUser.Id, request.ClientMessageId, request.ReplyToId), ct);
+            request.MentionedUserIds ?? [], currentUser.Id, request.ClientMessageId, request.ReplyToId,
+            request.Attachments), ct);
         return StatusCode(StatusCodes.Status201Created, dto);
     }
 
@@ -109,6 +112,22 @@ public sealed class MessagesController(ISender mediator, ICurrentUser currentUse
     public async Task<IActionResult> ListPinned(Guid channelId, CancellationToken ct)
     {
         var result = await mediator.Send(new ListPinnedMessagesQuery(channelId, currentUser.Id), ct);
+        return Ok(result);
+    }
+
+    /// <summary>Lists attachments shared in a channel (Files/Media panel, CF-5), newest first.</summary>
+    /// <param name="channelId">Channel id.</param>
+    /// <param name="kind">Optional filter: 0 = File, 1 = Image, 2 = Video; omit for all.</param>
+    /// <param name="limit">Max rows (1..100, default 60).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>200 with the channel's attachments.</returns>
+    [HttpGet("channels/{channelId:guid}/messages/attachments")]
+    [ProducesResponseType<IReadOnlyList<ChannelAttachmentDto>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListAttachments(
+        Guid channelId, [FromQuery] AttachmentKind? kind, [FromQuery] int limit, CancellationToken ct)
+    {
+        var result = await mediator.Send(
+            new ListChannelAttachmentsQuery(channelId, currentUser.Id, kind, limit == 0 ? 60 : limit), ct);
         return Ok(result);
     }
 

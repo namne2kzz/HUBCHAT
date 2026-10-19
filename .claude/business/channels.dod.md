@@ -4,6 +4,7 @@
 
 | Ngày | Giờ | Title | Thay đổi |
 |------|-----|-------|----------|
+| 2026-10-18 | — | Fix lỗ hổng: public→private chưa gỡ người xem | `ChangeVisibility` lúc public→private nay phát `ChannelMadePrivate(ChannelId, MemberIds)`. Realtime index người đang xem mỗi kênh (`IChannelSubscriptions`, Redis, ghi lúc JoinChannel/LeaveChannel/OnDisconnected) → consumer **gỡ mọi connection KHÔNG phải member** khỏi group + evict cache + push `channelAccessRevoked {nowPrivate:true}`. FE (page + sidebar) đóng/ẩn kênh khi `nowPrivate`. Mở private→public **không** phát event (không ai mất quyền). |
 | 2026-10-14 | — | Archive/Reopen có phân quyền (CF-13) | `ArchiveChannel` nhận `ActingUserId?`: user bấm nút ⇒ chỉ **Owner/Admin** (check `EnsureCanManageMembersAsync`); caller internal (sprint đóng) truyền `null` ⇒ bỏ qua check. Thêm `Unarchive()` (reopen). Cả hai idempotent (trả `bool`), chỉ phát `ChannelArchivedChanged(ChannelId, IsArchived)` khi thực sự đổi. UI kênh archived ⇒ read-only. |
 | 2026-10-04 | — | Find-or-create chống race (MP-3) | Unique `(WorkspaceId, LinkType, LinkExternalId)` (lọc NULL) thay index thường. OpenLinkedThread / FindOrCreateSprintChannel / OpenDirectMessage: 2 request đồng thời → 1 kênh, request thua đọc lại kênh thắng (linked thread: vẫn thêm caller làm member). Migration gỡ link khỏi các thread trùng cũ (giữ cái cũ nhất). Unique violation chưa xử lý → 409 thay vì 500. |
 | 2026-08-02 | 13:38 | P3 linked thread | Channel có thể link tới DASHBOARD resource (work item): OpenLinkedThread find-or-create, LinkType/LinkExternalId/Key/Url |
@@ -44,7 +45,7 @@ Kênh chat trong 1 workspace (= Repository/Project của DASHBOARD) để team t
 
 ## Edge Cases & Notes
 - DM/GroupDm dùng chung `Channel` (Type khác) — DM đúng 2 member là rule ở tầng tạo (P2 hoàn thiện).
-- Tên kênh sprint (`sprint-{slug}`) và linked thread vẫn có thể đụng `(WorkspaceId, Slug)` với kênh khác cùng tên → 409 (chưa tự đổi tên). Ghi nhận, chưa fix.
+- Tên kênh sprint (`sprint-{slug}`) và linked thread khi đụng `(WorkspaceId, Slug)` với kênh khác → **tự thêm hậu tố** (`-2`, `(2)`...) tới khi slug trống, tối đa 20 lần rồi fallback guid-suffix — **không còn 409** (fix 2026-10-18). Idempotency theo link vẫn ưu tiên: cùng sprint/resource luôn trả về đúng kênh đã tạo, không đổi tên nhầm.
 - Membership kênh (HUB) khác membership workspace (pull từ DASHBOARD): vào được workspace mới thấy/join kênh.
 
 ## Linked discussion threads (P3)

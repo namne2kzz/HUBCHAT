@@ -1,0 +1,47 @@
+:host { display: block; max-width: 100%; }
+
+.att-media {
+  display: block; padding: 0; border: none; background: transparent; cursor: pointer;
+  border-radius: 10px; overflow: hidden; max-width: 320px;
+  border: 1px solid var(--border);
+}
+.att-media.att-compact { max-width: 100%; border-radius: 8px; }
+
+.att-image img {
+  display: block; width: 100%; max-height: 320px; object-fit: cover;
+}
+.att-compact.att-image img { max-height: 120px; }
+
+.att-video video {
+  display: block; width: 100%; max-height: 320px; background: #000;
+}
+
+.att-skeleton {
+  width: 220px; height: 140px; max-width: 100%;
+  background: linear-gradient(90deg, var(--bg-surface-2) 25%, var(--bg-hover) 37%, var(--bg-surface-2) 63%);
+  background-size: 400% 100%; animation: att-shimmer 1.3s ease infinite;
+}
+.att-compact .att-skeleton { height: 90px; width: 100%; }
+@keyframes att-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+.att-file {
+  display: flex; align-items: center; gap: 10px;
+  max-width: 320px; padding: 9px 11px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-surface); cursor: pointer; text-align: left;
+  transition: background .12s, border-color .12s;
+  &:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+}
+.att-file.att-compact { max-width: 100%; padding: 7px 9px; }
+.att-file-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 8px;
+  background: var(--accent-soft); color: var(--accent-text);
+}
+.att-file-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.att-file-name {
+  font-size: 0.82rem; font-weight: 600; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.att-file-size { font-size: 0.68rem; color: var(--text-muted); }
+.att-file-dl { flex-shrink: 0; color: var(--text-muted); }

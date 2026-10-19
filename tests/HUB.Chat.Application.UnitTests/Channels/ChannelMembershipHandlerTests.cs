@@ -533,6 +533,22 @@ public sealed class ChannelMembershipHandlerTests
         e.ChannelId.ShouldBe(channel.Id);
         e.UserId.ShouldBe(owner);
         e.ReadAt.ShouldBe(readAt);
+        e.IsDirect.ShouldBeFalse("a public channel is not a DM — no read receipt");
+    }
+
+    [Fact]
+    public async Task ReadingADirectMessageMarksTheEventAsDirectForTheSeenReceipt()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var owner   = Guid.NewGuid();
+        var channel = await SeedChannelAsync(lease.Context, owner, ChannelType.Dm);
+        var events  = new RecordingEventPublisher();
+
+        await new MarkReadHandler(lease.Context, events)
+            .Handle(new MarkReadCommand(channel.Id, owner, DateTime.UtcNow.AddMinutes(-1)), CancellationToken.None);
+
+        // IsDirect is what lets realtime show the other participant a "Seen" receipt (CF-15).
+        events.Published.OfType<ChannelReadMarked>().ShouldHaveSingleItem().IsDirect.ShouldBeTrue();
     }
 
     [Fact]

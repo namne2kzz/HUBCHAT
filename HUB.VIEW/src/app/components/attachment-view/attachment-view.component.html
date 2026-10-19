@@ -1,0 +1,35 @@
+@let att = attachment();
+
+@if (att.kind === AttachmentKind.Image && !loadError()) {
+  <button type="button" class="att-media att-image" [class.att-compact]="compact()" (click)="open()" title="Open image">
+    @if (downloadUrl()) {
+      <img [src]="downloadUrl()" [alt]="att.name" loading="lazy" (error)="loadError.set(true)" />
+    } @else {
+      <div class="att-skeleton"></div>
+    }
+  </button>
+} @else if (att.kind === AttachmentKind.Video && !loadError()) {
+  <div class="att-media att-video" [class.att-compact]="compact()">
+    @if (downloadUrl()) {
+      <video [src]="downloadUrl()" controls preload="metadata" (error)="loadError.set(true)"></video>
+    } @else {
+      <div class="att-skeleton"></div>
+    }
+  </div>
+} @else {
+  <!-- File chip (or fallback when media failed to load) -->
+  <button type="button" class="att-file" [class.att-compact]="compact()" (click)="open()" [title]="'Download ' + att.name">
+    <span class="att-file-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+      </svg>
+    </span>
+    <span class="att-file-meta">
+      <span class="att-file-name">{{ att.name }}</span>
+      <span class="att-file-size">{{ sizeLabel() }}</span>
+    </span>
+    <svg class="att-file-dl" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+  </button>
+}

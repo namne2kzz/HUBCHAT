@@ -2,7 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Observable, retry, throwError, timer } from 'rxjs';
 import { ConfigService } from '../core/services/config.service';
-import { CursorPage, MessageDto, PostMessageRequest } from '../models/message.model';
+import { AttachmentKind, ChannelAttachmentDto, CursorPage, MessageDto, PostMessageRequest } from '../models/message.model';
 
 @Injectable({ providedIn: 'root' })
 export class MessageService {
@@ -77,6 +77,18 @@ export class MessageService {
   /** Lists a channel's pinned messages (GET /channels/{id}/messages/pinned). @param channelId Channel id. */
   listPinned(channelId: string): Observable<MessageDto[]> {
     return this.http.get<MessageDto[]>(`${this.channelUrl(channelId)}/pinned`);
+  }
+
+  /**
+   * Lists a channel's attachments for the Files/Media panel (CF-5), newest first.
+   * @param channelId Channel id.
+   * @param kind Optional kind filter (0 File, 1 Image, 2 Video); omit for all.
+   * @returns Observable of channel attachments.
+   */
+  listAttachments(channelId: string, kind?: AttachmentKind): Observable<ChannelAttachmentDto[]> {
+    let params = new HttpParams();
+    if (kind !== undefined) params = params.set('kind', kind);
+    return this.http.get<ChannelAttachmentDto[]>(`${this.channelUrl(channelId)}/attachments`, { params });
   }
 
   listAfter(channelId: string, afterMessageId: string, limit = 100): Observable<MessageDto[]> {

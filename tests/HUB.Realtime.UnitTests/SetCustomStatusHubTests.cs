@@ -29,7 +29,7 @@ public sealed class SetCustomStatusHubTests
         context.ConnectionId.Returns("conn-1");
         context.User.Returns(new ClaimsPrincipal(new ClaimsIdentity(claims, authenticated ? "test" : null)));
 
-        var hub = new ChatHub(store, Substitute.For<IChannelAccessService>())
+        var hub = new ChatHub(store, Substitute.For<IChannelAccessService>(), Substitute.For<IChannelSubscriptions>())
         {
             Context = context,
             Clients = clients,

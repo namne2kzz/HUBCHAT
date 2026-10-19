@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { of } from 'rxjs';
 import { ThreadPanelComponent } from './thread-panel.component';
 import { MessageService } from '../../services/message.service';
@@ -30,6 +32,7 @@ describe('ThreadPanelComponent', () => {
     await TestBed.configureTestingModule({
       imports: [ThreadPanelComponent],
       providers: [
+        provideHttpClient(), provideHttpClientTesting(), // embedded composer's FileService needs HttpClient
         { provide: MessageService, useValue: messageSvc },
         { provide: DirectoryService, useValue: { getUsers: () => of([]) } },
         // The embedded message list reads peer custom statuses from presence; stub it.

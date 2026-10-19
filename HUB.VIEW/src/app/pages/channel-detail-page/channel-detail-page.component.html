@@ -66,6 +66,17 @@
           </button>
         }
 
+        <!-- Files & media panel -->
+        <button
+          class="icon-btn"
+          [class.is-active]="filesOpen()"
+          (click)="filesOpen.set(!filesOpen())"
+          title="Files & media">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+          </svg>
+        </button>
+
         <!-- Search toggle -->
         <button
           class="icon-btn"
@@ -132,6 +143,7 @@
           [hasMore]="hasMore()"
           [currentUserId]="currentUserId()"
           [highlightedId]="highlightedMessageId()"
+          [seenAtMs]="seenAtMs()"
           [canReact]="canPost()"
           [canModerate]="canModerate()"
           (toggleReaction)="onToggleReaction($event)"
@@ -165,6 +177,7 @@
         <app-message-input
           [channelName]="channelTitle()"
           [channelId]="channelId"
+          [workspaceId]="channel()?.workspaceId ?? ''"
           [mentionCandidates]="mentionCandidates()"
           (send)="sendMessage($event)"
           (typing)="onTyping()"
@@ -239,6 +252,15 @@
         [channelName]="channelTitle()"
         (close)="threadRoot.set(null)"
         (replyCountChanged)="onReplyCountChanged($event)" />
+    }
+
+    <!-- Files & media panel (CF-5) -->
+    @if (filesOpen()) {
+      <app-channel-files-panel
+        [channelId]="channelId"
+        [authors]="authors()"
+        (jumpTo)="jumpToAttachment($event)"
+        (close)="filesOpen.set(false)" />
     }
 
   </div>

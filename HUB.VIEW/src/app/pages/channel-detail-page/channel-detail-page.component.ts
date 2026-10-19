@@ -20,6 +20,7 @@ import { MessageListComponent } from '../../components/message-list/message-list
 import { MessageInputComponent, ComposerSubmit } from '../../components/message-input/message-input.component';
 import { TypingIndicatorComponent } from '../../components/typing-indicator/typing-indicator.component';
 import { ThreadPanelComponent } from '../../components/thread-panel/thread-panel.component';
+import { ChannelFilesPanelComponent } from '../../components/channel-files-panel/channel-files-panel.component';
 import { ChannelInfoPanelComponent } from '../../components/channel-info-panel/channel-info-panel.component';
 
 import { DatePipe, DOCUMENT } from '@angular/common';
@@ -27,7 +28,7 @@ import { DatePipe, DOCUMENT } from '@angular/common';
 @Component({
   selector: 'app-channel-detail-page',
   standalone: true,
-  imports: [MessageListComponent, MessageInputComponent, TypingIndicatorComponent, ChannelInfoPanelComponent, ThreadPanelComponent, DatePipe],
+  imports: [MessageListComponent, MessageInputComponent, TypingIndicatorComponent, ChannelInfoPanelComponent, ThreadPanelComponent, ChannelFilesPanelComponent, DatePipe],
   templateUrl: './channel-detail-page.component.html',
   styleUrl: './channel-detail-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -74,6 +75,17 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   protected readonly pinnedMessages = signal<MessageDto[]>([]);
   /** Whether the pinned-messages dialog is open. */
   protected readonly pinnedOpen = signal(false);
+  /** Whether the Files & media panel (right side) is open (CF-5). */
+  protected readonly filesOpen = signal(false);
+
+  /** In a DM, the other participant's read point in ms — the "Seen" receipt (CF-15); 0 when none/not a DM. */
+  protected readonly otherReadAtMs = signal(0);
+  /** The DM "Seen" marker to pass to the message list: 0 unless this is a DM with a read point. */
+  protected readonly seenAtMs = computed(() => {
+    const c = this.channel();
+    const isDm = c?.type === ChannelType.Dm || c?.type === ChannelType.GroupDm;
+    return isDm ? this.otherReadAtMs() : 0;
+  });
 
   // ── In-channel search ───────────────────────────────────────────────────
   protected readonly searchMode  = signal(false);
@@ -249,6 +261,12 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     this.scrollToMessage(messageId);
   }
 
+  /** Jumps to the message an attachment belongs to and closes the Files panel. @param messageId Message id. */
+  protected jumpToAttachment(messageId: string): void {
+    this.filesOpen.set(false);
+    this.scrollToMessage(messageId);
+  }
+
   /** Unpins a message straight from the pinned dialog; closes it if that was the last pin. @param messageId Message id. */
   protected unpinFromBar(messageId: string): void {
     this.onTogglePin({ messageId, pin: false });
@@ -282,12 +300,14 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
 
   /** Sends a composed message (Markdown). @param payload Composer output. */
   protected sendMessage(payload: ComposerSubmit): void {
-    if (!payload.body.trim()) return;
+    const hasAttachments = (payload.attachments?.length ?? 0) > 0;
+    if (!payload.body.trim() && !hasAttachments) return; // nothing to send
     clearTimeout(this.typingTimer ?? undefined);
     this.realtime.stopTyping(this.channelId);
     const replyToId = this.replyingTo()?.id;
     this.messageSvc.send(this.channelId, {
       body: payload.body, format: payload.format, mentionedUserIds: payload.mentionedUserIds, replyToId,
+      attachments: payload.attachments,
     }).subscribe(msg => {
       this.messages.update(prev => mergeMessages(prev, [msg], 'replace'));
       this.resolveAuthors([msg]);
@@ -513,6 +533,8 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     this.searchQuery.set('');
     this.pinnedMessages.set([]);
     this.pinnedOpen.set(false);
+    this.filesOpen.set(false);
+    this.otherReadAtMs.set(0);
   }
 
   private initChannel(id: string): void {
@@ -543,6 +565,11 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
     const me = this.auth.currentUser()?.id;
     this.channelSvc.listMembers(channelId).pipe(
       switchMap(members => {
+        // CF-15: seed the DM "Seen" marker from the other member's current read point.
+        if (channelId === this.channelId) {
+          const other = members.find(m => m.userId !== me);
+          this.otherReadAtMs.set(other?.lastReadAt ? Date.parse(other.lastReadAt) : 0);
+        }
         const ids = members.map(m => m.userId).filter(id => id !== me);
         return ids.length ? this.directory.getUsers(ids) : of([] as DirectoryUser[]);
       }),
@@ -732,6 +759,14 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
         this.messages.update(prev => prev.map(m => removeReaction(m, e.messageId, e.userId, e.emoji)));
       });
 
+    // CF-15: the other DM participant read up to a point — advance the "Seen" marker (never backwards).
+    this.realtime.readReceipt$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(e => {
+        if (e.channelId !== this.channelId || e.userId === this.currentUserId()) return;
+        this.otherReadAtMs.update(cur => Math.max(cur, Date.parse(e.readAt)));
+      });
+
     this.realtime.messagePinChanged$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(e => {
@@ -745,12 +780,13 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
       .subscribe(e => {
         if (e.channelId !== this.channelId) return;
         const ch = this.channel();
-        if (ch && !ch.isPrivate) {
-          // A public channel stays readable to non-members — swap the composer for the join bar.
+        // A public channel stays readable to non-members — swap the composer for the join bar. But NOT when
+        // this revoke is a public→private lock-down (nowPrivate): the channel is no longer visible at all.
+        if (ch && !ch.isPrivate && !e.nowPrivate) {
           this.channel.update(c => (c ? { ...c, isMember: false, memberCount: Math.max(0, c.memberCount - 1) } : c));
           return;
         }
-        // Private: the server already stopped the stream; close the view instead of leaving it silently frozen.
+        // Private (or just locked down): the server already stopped the stream; close the view.
         this.infoOpen.set(false);
         this.channelSvc.selectChannel('');
       });

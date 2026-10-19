@@ -33,6 +33,11 @@ public sealed class MessageSentConsumer(IHubContext<ChatHub> hub) : IConsumer<Me
                 format    = m.Format,
                 parentId  = m.ParentId,
                 createdAt = m.CreatedAt,
+                attachments = m.Attachments?.Select(a => new
+                {
+                    id = a.Id, kind = a.Kind, fileId = a.FileId,
+                    name = a.Name, size = a.Size, mime = a.Mime, width = a.Width, height = a.Height,
+                }),
             },
             context.CancellationToken);
     }

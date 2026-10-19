@@ -1,9 +1,15 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, switchMap } from 'rxjs';
+import { Observable, from, map, switchMap } from 'rxjs';
 import { ConfigService } from '../core/services/config.service';
-import { CreateUploadTicketRequest, FileMetaDto, FileTicketDto } from '../models/file.model';
+import { CreateUploadTicketRequest, DownloadUrlDto, UploadTicketDto } from '../models/file.model';
+import { skipErrorToast } from '../core/http/http-context';
 
+/**
+ * Talks to the Media service's 2-phase upload (CF-5): reserve a presigned PUT URL, upload the bytes
+ * straight to MinIO, then confirm. Download URLs are presigned and short-lived, so they are fetched
+ * on demand (see {@link AttachmentUrlService}), never stored.
+ */
 @Injectable({ providedIn: 'root' })
 export class FileService {
   private readonly http   = inject(HttpClient);
@@ -11,37 +17,43 @@ export class FileService {
   private get apiUrl() { return `${this.config.apiBaseUrl}/files`; }
 
   /**
-   * 2-phase upload: get presigned PUT URL from media-service, then PUT directly to MinIO.
-   * @param file File to upload.
-   * @returns Observable of the completed FileMetaDto.
+   * Uploads a file: ticket → PUT to MinIO → complete. Resolves with the Media file id.
+   * @param file The file to upload.
+   * @param workspaceId Owning workspace (repo) id.
+   * @param channelId Channel the file is shared in.
+   * @returns Observable of the uploaded file id.
    */
-  upload(file: File): Observable<FileMetaDto> {
-    const ticket: CreateUploadTicketRequest = {
+  upload(file: File, workspaceId: string, channelId: string): Observable<string> {
+    const body: CreateUploadTicketRequest = {
+      workspaceId,
+      channelId,
       fileName:    file.name,
       contentType: file.type || 'application/octet-stream',
       sizeBytes:   file.size,
     };
-    return this.http.post<FileTicketDto>(this.apiUrl, ticket).pipe(
-      switchMap(t =>
-        new Observable<FileMetaDto>(observer => {
-          fetch(t.uploadUrl, {
-            method:  'PUT',
-            body:    file,
-            headers: { 'Content-Type': file.type || 'application/octet-stream' },
-          })
-            .then(() =>
-              this.http
-                .post<FileMetaDto>(`${this.apiUrl}/${t.fileId}/complete`, {})
-                .subscribe({ next: m => { observer.next(m); observer.complete(); }, error: e => observer.error(e) })
-            )
-            .catch(e => observer.error(e));
-        })
-      )
+    return this.http.post<UploadTicketDto>(this.apiUrl, body).pipe(
+      switchMap(ticket =>
+        from(fetch(ticket.uploadUrl, {
+          method:  'PUT',
+          body:    file,
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        })).pipe(
+          switchMap(res => {
+            if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+            return this.http.post<void>(`${this.apiUrl}/${ticket.fileId}/complete`, {});
+          }),
+          map(() => ticket.fileId),
+        )),
     );
   }
 
-  /** Gets download URL for a file. @param id File id. */
-  getMeta(id: string): Observable<FileMetaDto> {
-    return this.http.get<FileMetaDto>(`${this.apiUrl}/${id}`);
+  /**
+   * Gets a presigned download URL for a file. Skips the global error toast — callers degrade gracefully
+   * (a missing/scanning file just doesn't render).
+   * @param fileId Media file id.
+   * @returns Observable of the download URL DTO.
+   */
+  getDownloadUrl(fileId: string): Observable<DownloadUrlDto> {
+    return this.http.get<DownloadUrlDto>(`${this.apiUrl}/${fileId}`, { context: skipErrorToast() });
   }
 }

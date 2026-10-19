@@ -353,4 +353,8 @@ public sealed class LinkedChannelHandlerTests
 
         stored.Members.ShouldHaveSingleItem().Role.ShouldBe(ChannelMemberRole.Owner);
     }
+
+    // Slug-collision auto-rename depends on the unique (WorkspaceId, Slug) index raising Npgsql's
+    // UniqueConstraintViolationException, which SQLite does not translate — so it is covered in the
+    // integration suite (SlugCollisionTests) against real PostgreSQL, not here.
 }

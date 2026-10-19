@@ -29,35 +29,60 @@ public sealed class FindOrCreateSprintChannelHandler(IChatDbContext db)
             return ToDto(existing);
 
         // ── Create new Private channel ────────────────────────────────────────
-        var channelName = $"sprint-{Slugify(request.SprintName)}";
+        // The name maps to a unique (WorkspaceId, Slug). A different channel may already own the base slug
+        // (another sprint with a similar name, or a user-made "sprint-x"), so disambiguate with a numeric
+        // suffix instead of failing with a 409 the caller can't act on.
+        var rawBase  = $"sprint-{Slugify(request.SprintName)}";
+        var baseName = rawBase.Length > 90 ? rawBase[..90].TrimEnd('-') : rawBase; // headroom for a "-NN" suffix
+
+        for (var attempt = 0; attempt <= MaxSlugAttempts; attempt++)
+        {
+            var channelName = attempt == 0 ? baseName : $"{baseName}-{attempt + 1}";
+            var channel = Channel.Create(
+                request.WorkspaceId, channelName, ChannelType.Private, request.CreatorUserId,
+                topic: $"Discussion channel for sprint: {request.SprintName}");
+
+            channel.LinkTo(
+                LinkedResourceType.Sprint, request.SprintId,
+                externalKey: request.SprintName,
+                url: string.Empty); // DASHBOARD will store the URL; HUB doesn't know the frontend URL
+
+            db.Channels.Add(channel);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                return ToDto(channel);
+            }
+            catch (UniqueConstraintViolationException)
+            {
+                db.DiscardChanges();
+
+                // A concurrent call created THIS sprint's channel first (unique link index) — return it.
+                var winner = await FindAsync(request, ct);
+                if (winner is not null) return ToDto(winner);
+
+                // Otherwise the clash was the (WorkspaceId, Slug) — a name collision. Try the next suffix.
+            }
+        }
+
+        // Exhausted suffixes: fall back to a slug that cannot collide rather than 409.
+        return await CreateWithUniqueSlugAsync(request, baseName, ct);
+    }
+
+    /// <summary>Most "-N" suffixes tried before falling back to a guid-suffixed slug.</summary>
+    private const int MaxSlugAttempts = 20;
+
+    /// <summary>Last-resort create with a slug made unique by a short random suffix.</summary>
+    private async Task<ChannelDto> CreateWithUniqueSlugAsync(
+        FindOrCreateSprintChannelCommand request, string baseName, CancellationToken ct)
+    {
         var channel = Channel.Create(
-            request.WorkspaceId,
-            channelName,
-            ChannelType.Private,
-            request.CreatorUserId,
+            request.WorkspaceId, $"{baseName}-{Guid.NewGuid():N}"[..Math.Min(baseName.Length + 9, 100)],
+            ChannelType.Private, request.CreatorUserId,
             topic: $"Discussion channel for sprint: {request.SprintName}");
-
-        channel.LinkTo(
-            LinkedResourceType.Sprint,
-            request.SprintId,
-            externalKey: request.SprintName,
-            url: string.Empty); // DASHBOARD will store the URL; HUB doesn't know the frontend URL
-
+        channel.LinkTo(LinkedResourceType.Sprint, request.SprintId, externalKey: request.SprintName, url: string.Empty);
         db.Channels.Add(channel);
-        try
-        {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (UniqueConstraintViolationException)
-        {
-            // A concurrent call created this sprint's channel first (unique link index) — return that one.
-            // Null means the clash was something else (e.g. slug) — not ours to resolve.
-            db.DiscardChanges();
-            var winner = await FindAsync(request, ct);
-            if (winner is null) throw;
-            return ToDto(winner);
-        }
-
+        await db.SaveChangesAsync(ct);
         return ToDto(channel);
     }
 

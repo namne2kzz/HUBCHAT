@@ -21,4 +21,6 @@ public sealed record PostMessageCommand(
     Guid ActingUserId,
     Guid? ClientMessageId = null,
     /// <summary>Quote-reply target: the message this one quotes (distinct from a thread parent).</summary>
-    Guid? ReplyToId = null) : IRequest<MessageDto>;
+    Guid? ReplyToId = null,
+    /// <summary>Files already uploaded via the Media service to attach to this message (CF-5).</summary>
+    IReadOnlyList<AttachmentInput>? Attachments = null) : IRequest<MessageDto>;

@@ -111,18 +111,20 @@ public sealed class Message : AggregateRoot
     /// <param name="replyToId">Message id this quote-replies to; null otherwise.</param>
     /// <param name="mentions">User ids mentioned in the body.</param>
     /// <param name="clientMessageId">Client idempotency key for this send; null when the client sends none.</param>
+    /// <param name="allowEmptyBody">True when the message carries attachments and so may have no text (CF-5).</param>
     /// <returns>The new message.</returns>
     public static Message Post(
         Guid channelId, Guid authorId, string body, MessageFormat format = MessageFormat.Markdown,
         Guid? parentId = null, Guid? replyToId = null, IEnumerable<Guid>? mentions = null,
-        Guid? clientMessageId = null)
+        Guid? clientMessageId = null, bool allowEmptyBody = false)
     {
-        if (string.IsNullOrWhiteSpace(body))
+        // A text-only message must say something; an attachment-only message (allowEmptyBody) may not.
+        if (string.IsNullOrWhiteSpace(body) && !allowEmptyBody)
             throw new DomainException("Message body cannot be empty.");
         if (clientMessageId == Guid.Empty)
             throw new DomainException("Client message id cannot be empty.");
 
-        return new Message(channelId, authorId, body.Trim(), format, parentId, replyToId, mentions ?? [])
+        return new Message(channelId, authorId, (body ?? string.Empty).Trim(), format, parentId, replyToId, mentions ?? [])
         {
             ClientMessageId = clientMessageId,
         };

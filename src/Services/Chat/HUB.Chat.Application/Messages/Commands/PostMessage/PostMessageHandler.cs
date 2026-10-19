@@ -40,18 +40,28 @@ public sealed class PostMessageHandler(IChatDbContext db, IIntegrationEventPubli
 
         channel.EnsureWritable();
 
+        var attachments = request.Attachments ?? [];
+        if (string.IsNullOrWhiteSpace(request.Body) && attachments.Count == 0)
+            throw new DomainException("A message must have text or at least one attachment.");
+
         var message = Message.Post(
             request.ChannelId, request.ActingUserId, request.Body, request.Format,
             parentId: request.ParentId, replyToId: request.ReplyToId, mentions: channel.MentionableAmong(request.MentionedUserIds),
-            clientMessageId: request.ClientMessageId);
+            clientMessageId: request.ClientMessageId, allowEmptyBody: attachments.Count > 0);
+
+        // The Media file id is the stable reference Chat stores; the client resolves a presigned URL from it.
+        foreach (var a in attachments)
+            message.AddAttachment(a.Kind, a.FileId.ToString(), a.Name, a.Size, a.Mime, a.Width, a.Height);
 
         db.Messages.Add(message);
 
         // Publish through the outbox — stored in the same transaction, delivered after SaveChanges.
         await events.PublishAsync(
             new MessageSent(
-                message.Id, channel.Id, message.AuthorId, Preview(message.Body), message.Mentions.ToList(),
-                Body: message.Body, Format: (int)message.Format, ParentId: message.ParentId, CreatedAt: message.CreatedAt),
+                message.Id, channel.Id, message.AuthorId, Preview(message.Body, message.Attachments.Count), message.Mentions.ToList(),
+                Body: message.Body, Format: (int)message.Format, ParentId: message.ParentId, CreatedAt: message.CreatedAt,
+                Attachments: [.. message.Attachments.Select(a =>
+                    new MessageAttachmentPayload(a.Id, (int)a.Kind, a.Url, a.Name, a.Size, a.Mime, a.Width, a.Height))]),
             ct);
 
         // Self-mentions stay on the message but never notify the author.
@@ -95,5 +105,10 @@ public sealed class PostMessageHandler(IChatDbContext db, IIntegrationEventPubli
         return existing.ToDto();
     }
 
-    private static string Preview(string body) => body.Length <= 140 ? body : body[..140];
+    private static string Preview(string body, int attachmentCount = 0)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return attachmentCount == 1 ? "📎 Attachment" : $"📎 {attachmentCount} attachments";
+        return body.Length <= 140 ? body : body[..140];
+    }
 }

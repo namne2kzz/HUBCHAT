@@ -641,7 +641,9 @@ export class ShellLayoutComponent implements OnInit {
       .subscribe(e => {
         void this.realtime.leaveChannel(e.channelId);
         const ch = this.channels().find(c => c.id === e.channelId);
-        if (!ch?.isPrivate) return; // public channels stay listed (readable without membership)
+        // Public channels stay listed (readable without membership) — unless this is a public→private
+        // lock-down (nowPrivate), where the non-member can no longer see it.
+        if (!ch?.isPrivate && !e.nowPrivate) return;
         this.channels.update(cs => cs.filter(c => c.id !== e.channelId));
         this.channelSvc.updateCache(this.channels());
         this.unreadMap.update(m => {

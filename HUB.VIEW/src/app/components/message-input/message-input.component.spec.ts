@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComposerSubmit, MessageInputComponent } from './message-input.component';
 import { MessageFormat } from '../../models/message.model';
 import { DirectoryUser } from '../../models/directory.model';
@@ -54,7 +56,10 @@ describe('MessageInputComponent', () => {
 
   beforeEach(async () => {
     localStorage.clear(); // drafts (CF-17) persist here; isolate each test
-    await TestBed.configureTestingModule({ imports: [MessageInputComponent] }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [MessageInputComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()], // FileService (attachments) needs HttpClient
+    }).compileComponents();
 
     fixture = TestBed.createComponent(MessageInputComponent);
     component = fixture.componentInstance;
@@ -493,5 +498,89 @@ describe('MessageInputComponent', () => {
       setChannel('c1');
       expect(inner().body()).toBe('');     // the sent draft is gone, not restored
     });
+  });
+});
+
+import { of, Subject, throwError } from 'rxjs';
+import { AttachmentKind } from '../../models/message.model';
+import { FileService } from '../../services/file.service';
+
+/**
+ * Covers composer attachments (CF-5): picking a file uploads it, send carries the finished attachment
+ * metadata (not the still-uploading ones), and an image-only message can be sent with no text.
+ */
+describe('MessageInputComponent — attachments', () => {
+  let fixture: ComponentFixture<MessageInputComponent>;
+  let component: MessageInputComponent;
+  let files: jasmine.SpyObj<FileService>;
+  let sent: ComposerSubmit[];
+
+  const inner = () => component as unknown as {
+    body: { set(v: string): void };
+    attachments: () => { localId: string; status: string }[];
+    onFilesPicked(e: Event): void;
+    canSend(): boolean;
+    submit(): void;
+  };
+
+  const pick = (...f: File[]) => {
+    const input = { files: f, value: '' } as unknown as HTMLInputElement;
+    inner().onFilesPicked({ target: input } as unknown as Event);
+    fixture.detectChanges();
+  };
+
+  beforeEach(async () => {
+    localStorage.clear();
+    files = jasmine.createSpyObj<FileService>('FileService', ['upload', 'getDownloadUrl']);
+    await TestBed.configureTestingModule({
+      imports: [MessageInputComponent],
+      providers: [{ provide: FileService, useValue: files }],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(MessageInputComponent);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('channelId', 'c1');
+    fixture.componentRef.setInput('workspaceId', 'w1');
+    sent = [];
+    component.send.subscribe(v => sent.push(v));
+    fixture.detectChanges();
+  });
+
+  afterEach(() => localStorage.clear());
+
+  it('uploads a picked file and marks it done', () => {
+    files.upload.and.returnValue(of('file-1'));
+    pick(new File(['x'], 'pic.png', { type: 'image/png' }));
+
+    expect(files.upload).toHaveBeenCalledWith(jasmine.any(File), 'w1', 'c1');
+    expect(inner().attachments().length).toBe(1);
+    expect(inner().attachments()[0].status).toBe('done');
+  });
+
+  it('can send an image with no text, carrying the attachment metadata', () => {
+    files.upload.and.returnValue(of('file-1'));
+    pick(new File(['x'], 'pic.png', { type: 'image/png' }));
+
+    expect(inner().canSend()).toBeTrue();
+    inner().submit();
+
+    expect(sent.length).toBe(1);
+    expect(sent[0].body).toBe('');
+    expect(sent[0].attachments).toEqual([jasmine.objectContaining({
+      fileId: 'file-1', kind: AttachmentKind.Image, name: 'pic.png', mime: 'image/png',
+    })]);
+  });
+
+  it('cannot send while an upload is still in flight', () => {
+    files.upload.and.returnValue(new Subject<string>()); // never emits
+    pick(new File(['x'], 'big.zip', { type: 'application/zip' }));
+    expect(inner().attachments()[0].status).toBe('uploading');
+    expect(inner().canSend()).toBeFalse();
+  });
+
+  it('marks an attachment as errored when the upload fails', () => {
+    files.upload.and.returnValue(throwError(() => new Error('boom')));
+    pick(new File(['x'], 'pic.png', { type: 'image/png' }));
+    expect(inner().attachments()[0].status).toBe('error');
   });
 });

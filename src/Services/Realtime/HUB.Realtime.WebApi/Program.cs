@@ -40,6 +40,7 @@ builder.Services.AddSignalR().AddStackExchangeRedis(o =>
 // Shared Redis multiplexer for presence tracking.
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
 builder.Services.AddSingleton<IPresenceStore, RedisPresenceStore>();
+builder.Services.AddSingleton<IChannelSubscriptions, RedisChannelSubscriptions>();
 
 // ── Channel access check (chat-service + Redis cache) ─────────────────────────
 // Guards JoinChannel: without it, knowing a channel id was enough to receive its realtime stream. The
@@ -69,6 +70,7 @@ builder.Services.AddHubMessaging(builder.Configuration, bus =>
     bus.AddConsumer<ChannelReadMarkedConsumer>();
     // Revokes a removed member's live subscription (group + join cache) — see the consumer for why.
     bus.AddConsumer<ChannelMemberRemovedConsumer>();
+    bus.AddConsumer<ChannelMadePrivateConsumer>();
 });
 
 // Reuses the presence multiplexer: a failing ping means presence and the backplane are both down.

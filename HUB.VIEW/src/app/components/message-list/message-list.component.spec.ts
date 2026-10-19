@@ -610,4 +610,35 @@ describe('MessageListComponent', () => {
       expect(fixture.nativeElement.querySelector('.msg-pinned-tag')).toBeNull();
     });
   });
+
+  // DM "Seen" receipt (CF-15): under the last own message at/before the other participant's read point.
+  describe('read receipt', () => {
+    const at = (min: number) => new Date(BASE.getTime() + min * 60_000).toISOString();
+    const seen = () => Array.from(fixture.nativeElement.querySelectorAll('.bub-seen')) as HTMLElement[];
+
+    it('shows no "Seen" when seenAtMs is 0 (non-DM or never read)', () => {
+      fixture.componentRef.setInput('seenAtMs', 0);
+      rowsFor([{ ...msg(ME, 0), createdAt: at(0) }]);
+      expect(seen().length).toBe(0);
+    });
+
+    it('marks the last own message at or before the read point, once', () => {
+      // Two of my messages; the other person read up to the first only.
+      fixture.componentRef.setInput('seenAtMs', BASE.getTime() + 1.5 * 60_000);
+      rowsFor([
+        { ...msg(ME, 0), id: 'm1', createdAt: at(1) },
+        { ...msg(ME, 0), id: 'm2', createdAt: at(2) },
+      ]);
+      const labels = seen();
+      expect(labels.length).toBe(1);
+      // It sits in the first message's row (m1), not the later unseen one.
+      expect(labels[0].closest('[id="msg-m1"]')).not.toBeNull();
+    });
+
+    it('does not mark the other person\'s messages as seen', () => {
+      fixture.componentRef.setInput('seenAtMs', BASE.getTime() + 10 * 60_000);
+      rowsFor([{ ...msg(ALICE, 0), id: 'a1', createdAt: at(1) }], ME);
+      expect(seen().length).toBe(0);
+    });
+  });
 });

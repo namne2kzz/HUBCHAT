@@ -55,6 +55,17 @@ export interface MessageDto {
   lastReplyAt?: string | null;
 }
 
+/** One uploaded file attached to a new message (mirrors HUB.Chat.Application...AttachmentInput). */
+export interface AttachmentInput {
+  fileId: string;
+  kind: AttachmentKind;
+  name: string;
+  size: number;
+  mime: string;
+  width?: number | null;
+  height?: number | null;
+}
+
 /** POST /api/v1/channels/{channelId}/messages body. */
 export interface PostMessageRequest {
   body: string;
@@ -65,6 +76,24 @@ export interface PostMessageRequest {
   clientMessageId?: string;
   /** Quote-reply target: the message this one quotes (shown as a preview above the new message). */
   replyToId?: string;
+  /** Files already uploaded via the Media service to attach to this message (CF-5). */
+  attachments?: AttachmentInput[];
+}
+
+/** Mirrors HUB.Chat.Application.Messages.DTOs.ChannelAttachmentDto (Files/Media panel). */
+export interface ChannelAttachmentDto {
+  id: string;
+  messageId: string;
+  authorId: string;
+  kind: AttachmentKind;
+  /** Media file id (resolve a presigned download URL from it). */
+  fileId: string;
+  name: string;
+  size: number;
+  mime: string;
+  width: number | null;
+  height: number | null;
+  createdAt: string;
 }
 
 /** Backend keyset page: HUB.Chat.Application.Common.Models.CursorPage<T> — items + nextCursor only. */
@@ -90,6 +119,20 @@ export interface MessageReceivedEvent {
   parentId?: string | null;
   /** Message creation time (timeline sort key); null on old events. */
   createdAt?: string | null;
+  /** Attachments (CF-5); `url` holds the Media file id. Absent on old events. */
+  attachments?: RealtimeAttachment[] | null;
+}
+
+/** Attachment shape on the realtime messageReceived event (MessageSentConsumer). */
+export interface RealtimeAttachment {
+  id: string;
+  kind: AttachmentKind;
+  fileId: string;
+  name: string;
+  size: number;
+  mime: string;
+  width: number | null;
+  height: number | null;
 }
 
 export interface MessageEditedEvent {

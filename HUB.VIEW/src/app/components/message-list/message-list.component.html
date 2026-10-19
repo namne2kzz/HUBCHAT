@@ -49,14 +49,17 @@
           } @else {
             <div class="bubble-wrap">
               <ng-container *ngTemplateOutlet="quoteTpl; context: { $implicit: row }" />
-              <div class="bubble bubble-them"
-                   [class.bubble-mentions-me]="row.mentionsMe"
-                   [class.bubble-first]="row.showHeader"
-                   [class.bubble-continued]="!row.showHeader"
-                   [class.bubble-last]="!row.isContinued"
-                   [title]="row.msg.createdAt | date:'medium'"
-                   [innerHTML]="row.html">
-              </div>
+              @if (row.msg.body) {
+                <div class="bubble bubble-them"
+                     [class.bubble-mentions-me]="row.mentionsMe"
+                     [class.bubble-first]="row.showHeader"
+                     [class.bubble-continued]="!row.showHeader"
+                     [class.bubble-last]="!row.isContinued"
+                     [title]="row.msg.createdAt | date:'medium'"
+                     [innerHTML]="row.html">
+                </div>
+              }
+              <ng-container *ngTemplateOutlet="attachmentsTpl; context: { $implicit: row }" />
               <ng-container *ngTemplateOutlet="hoverTpl; context: { $implicit: row }" />
             </div>
           }
@@ -96,13 +99,16 @@
           } @else {
             <div class="bubble-wrap bubble-wrap-me">
               <ng-container *ngTemplateOutlet="quoteTpl; context: { $implicit: row }" />
-              <div class="bubble bubble-me"
-                   [class.bubble-first]="row.showHeader"
-                   [class.bubble-continued]="!row.showHeader"
-                   [class.bubble-last]="!row.isContinued"
-                   [title]="row.msg.createdAt | date:'medium'"
-                   [innerHTML]="row.html">
-              </div>
+              @if (row.msg.body) {
+                <div class="bubble bubble-me"
+                     [class.bubble-first]="row.showHeader"
+                     [class.bubble-continued]="!row.showHeader"
+                     [class.bubble-last]="!row.isContinued"
+                     [title]="row.msg.createdAt | date:'medium'"
+                     [innerHTML]="row.html">
+                </div>
+              }
+              <ng-container *ngTemplateOutlet="attachmentsTpl; context: { $implicit: row }" />
               <ng-container *ngTemplateOutlet="hoverTpl; context: { $implicit: row }" />
             </div>
           }
@@ -112,6 +118,9 @@
           @if (!row.isDeleted) {
             <ng-container *ngTemplateOutlet="reactionsTpl; context: { $implicit: row }" />
             <ng-container *ngTemplateOutlet="threadTpl; context: { $implicit: row }" />
+          }
+          @if (row.msg.id === seenMessageId()) {
+            <span class="bub-seen">Seen</span>
           }
         </div>
       </div>
@@ -217,6 +226,17 @@
             </div>
           }
         </div>
+      }
+    </div>
+  }
+</ng-template>
+
+<!-- ── Attachments (images/videos inline, files as chips) ───────────────────── -->
+<ng-template #attachmentsTpl let-row>
+  @if (row.msg.attachments?.length) {
+    <div class="bub-attachments" [class.bub-attachments-me]="row.isOwn">
+      @for (a of row.msg.attachments; track a.id) {
+        <app-attachment-view [attachment]="a" />
       }
     </div>
   }

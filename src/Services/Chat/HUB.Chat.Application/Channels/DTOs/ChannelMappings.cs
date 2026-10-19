@@ -41,5 +41,5 @@ public static class ChannelMappings
     /// <param name="m">The membership.</param>
     /// <returns>The member DTO.</returns>
     public static ChannelMemberDto ToMemberDto(this ChannelMember m) =>
-        new(m.UserId, m.Role, m.Muted, m.JoinedAt);
+        new(m.UserId, m.Role, m.Muted, m.JoinedAt, m.LastReadAt);
 }

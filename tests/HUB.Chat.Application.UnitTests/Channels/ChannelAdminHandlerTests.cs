@@ -8,6 +8,7 @@ using HUB.Chat.Domain.Common;
 using HUB.Chat.Domain.Entities;
 using HUB.Chat.Domain.Enums;
 using HUB.Chat.Infrastructure.Persistence;
+using HUB.Shared.Contracts.Events;
 using HUB.TestKit.Db;
 using HUB.TestKit.Fakes;
 using Microsoft.EntityFrameworkCore;
@@ -193,13 +194,36 @@ public sealed class ChannelAdminHandlerTests
         await using var lease = await ChatDbContextFactory.CreateAsync();
         var owner   = Guid.NewGuid();
         var channel = await SeedAsync(lease.Context, owner);
+        channel.AddMember(Guid.NewGuid(), ChannelMemberRole.Member); // a second member to carry in the event
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+        var events = new RecordingEventPublisher();
 
-        var result = await new ChangeChannelVisibilityHandler(lease.Context).Handle(
+        var result = await new ChangeChannelVisibilityHandler(lease.Context, events).Handle(
             new ChangeChannelVisibilityCommand(channel.Id, true, owner), CancellationToken.None);
 
         result.IsPrivate.ShouldBeTrue();
         result.Type.ShouldBe(ChannelType.Private);
         result.MyRole.ShouldBe(ChannelMemberRole.Owner);
+
+        // Locking a public channel down must announce its member list, so realtime can drop non-member watchers.
+        var locked = events.OfType<ChannelMadePrivate>().ShouldHaveSingleItem();
+        locked.ChannelId.ShouldBe(channel.Id);
+        locked.MemberIds.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task MakingAnAlreadyPrivateChannelPublicPublishesNoLockdown()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var owner   = Guid.NewGuid();
+        var channel = await SeedAsync(lease.Context, owner, ChannelType.Private);
+        var events  = new RecordingEventPublisher();
+
+        await new ChangeChannelVisibilityHandler(lease.Context, events).Handle(
+            new ChangeChannelVisibilityCommand(channel.Id, false, owner), CancellationToken.None);
+
+        // Opening up is not a revocation — nobody loses access, so no ChannelMadePrivate.
+        events.OfType<ChannelMadePrivate>().ShouldBeEmpty();
     }
 
     [Fact]
@@ -216,7 +240,7 @@ public sealed class ChannelAdminHandlerTests
         // must not be able to make a private one public. Reusing UpdateChannel's check here would be a
         // confidentiality bug, not a permissions nitpick.
         await Should.ThrowAsync<ForbiddenException>(() =>
-            new ChangeChannelVisibilityHandler(lease.Context).Handle(
+            new ChangeChannelVisibilityHandler(lease.Context, new RecordingEventPublisher()).Handle(
                 new ChangeChannelVisibilityCommand(channel.Id, false, admin), CancellationToken.None));
     }
 
@@ -227,7 +251,7 @@ public sealed class ChannelAdminHandlerTests
         var channel = await SeedAsync(lease.Context, Guid.NewGuid());
 
         await Should.ThrowAsync<ForbiddenException>(() =>
-            new ChangeChannelVisibilityHandler(lease.Context).Handle(
+            new ChangeChannelVisibilityHandler(lease.Context, new RecordingEventPublisher()).Handle(
                 new ChangeChannelVisibilityCommand(channel.Id, true, Guid.NewGuid()), CancellationToken.None));
     }
 
@@ -239,7 +263,7 @@ public sealed class ChannelAdminHandlerTests
         var channel = await SeedAsync(lease.Context, owner, ChannelType.Dm);
 
         await Should.ThrowAsync<DomainException>(() =>
-            new ChangeChannelVisibilityHandler(lease.Context).Handle(
+            new ChangeChannelVisibilityHandler(lease.Context, new RecordingEventPublisher()).Handle(
                 new ChangeChannelVisibilityCommand(channel.Id, false, owner), CancellationToken.None));
     }
 

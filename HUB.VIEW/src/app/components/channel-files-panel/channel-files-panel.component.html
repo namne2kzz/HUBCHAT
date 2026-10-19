@@ -1,0 +1,53 @@
+<div class="files-panel">
+  <header class="files-head">
+    <span class="files-title">Files &amp; media</span>
+    <button type="button" class="files-close" (click)="close.emit()" aria-label="Close">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </header>
+
+  <div class="files-tabs">
+    <button class="files-tab" [class.is-active]="tab() === 'media'" (click)="tab.set('media')">
+      Media <span class="files-tab-count">{{ media().length }}</span>
+    </button>
+    <button class="files-tab" [class.is-active]="tab() === 'files'" (click)="tab.set('files')">
+      Files <span class="files-tab-count">{{ docs().length }}</span>
+    </button>
+  </div>
+
+  <div class="files-body">
+    @if (loading()) {
+      <div class="files-loading"><div class="spinner"></div></div>
+    } @else if (tab() === 'media') {
+      @if (media().length === 0) {
+        <p class="files-empty">No images or videos shared yet.</p>
+      } @else {
+        <div class="media-grid">
+          @for (a of media(); track a.id) {
+            <button type="button" class="media-cell" (click)="jumpTo.emit(a.messageId)" [title]="'Shared by ' + authorName(a.authorId)">
+              <app-attachment-view [attachment]="toAttachment(a)" [compact]="true" />
+            </button>
+          }
+        </div>
+      }
+    } @else {
+      @if (docs().length === 0) {
+        <p class="files-empty">No files shared yet.</p>
+      } @else {
+        <div class="files-list">
+          @for (a of docs(); track a.id) {
+            <button type="button" class="files-row" (click)="jumpTo.emit(a.messageId)">
+              <span class="files-row-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </span>
+              <span class="files-row-meta">
+                <span class="files-row-name">{{ a.name }}</span>
+                <span class="files-row-sub">{{ authorName(a.authorId) }} · {{ a.createdAt | date:'MMM d' }}</span>
+              </span>
+            </button>
+          }
+        </div>
+      }
+    }
+  </div>
+</div>

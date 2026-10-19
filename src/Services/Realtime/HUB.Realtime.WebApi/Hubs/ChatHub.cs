@@ -9,8 +9,12 @@ namespace HUB.Realtime.WebApi.Hubs;
 /// <summary>SignalR hub for realtime chat: channel groups, typing, and presence. Backed by a Redis backplane.</summary>
 /// <param name="presence">Redis presence store (online/away tracking).</param>
 /// <param name="channelAccess">Cached membership check guarding channel subscriptions.</param>
+/// <param name="subscriptions">Index of who is in each channel group, so non-members can be revoked on a visibility change.</param>
 [Authorize]
-public sealed class ChatHub(IPresenceStore presence, IChannelAccessService channelAccess) : Hub
+public sealed class ChatHub(
+    IPresenceStore presence,
+    IChannelAccessService channelAccess,
+    IChannelSubscriptions subscriptions) : Hub
 {
     /// <summary>Group name for a channel's subscribers.</summary>
     public static string ChannelGroup(Guid channelId) => $"channel:{channelId}";
@@ -36,6 +40,7 @@ public sealed class ChatHub(IPresenceStore presence, IChannelAccessService chann
             if (becameOffline)
                 await Clients.All.SendAsync("presenceChanged", new { userId = uid, status = "Offline" });
         }
+        await subscriptions.RemoveConnectionAsync(Context.ConnectionId, CancellationToken.None);
         await base.OnDisconnectedAsync(exception);
     }
 
@@ -57,12 +62,16 @@ public sealed class ChatHub(IPresenceStore presence, IChannelAccessService chann
             throw new HubException("You are not allowed to join this channel.");
 
         await Groups.AddToGroupAsync(Context.ConnectionId, ChannelGroup(channelId));
+        await subscriptions.AddAsync(channelId, Context.ConnectionId, userId, Context.ConnectionAborted);
     }
 
     /// <summary>Unsubscribes the caller's connection from a channel.</summary>
     /// <param name="channelId">Channel to leave.</param>
-    public Task LeaveChannel(Guid channelId) =>
-        Groups.RemoveFromGroupAsync(Context.ConnectionId, ChannelGroup(channelId));
+    public async Task LeaveChannel(Guid channelId)
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, ChannelGroup(channelId));
+        await subscriptions.RemoveAsync(channelId, Context.ConnectionId, Context.ConnectionAborted);
+    }
 
     /// <summary>Broadcasts that the caller started typing in a channel.</summary>
     /// <param name="channelId">Channel id.</param>

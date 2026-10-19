@@ -1,5 +1,6 @@
 using HUB.Chat.Application.Common.Exceptions;
 using HUB.Chat.Application.Common.Interfaces;
+using HUB.Chat.Domain.Enums;
 using HUB.Shared.Contracts.Events;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -34,7 +35,8 @@ public sealed class MarkReadHandler(IChatDbContext db, IIntegrationEventPublishe
         var readAt = request.ReadAt is { } at && at < now ? at.ToUniversalTime() : now;
         if (!member.MarkRead(readAt)) return;
 
-        await events.PublishAsync(new ChannelReadMarked(channel.Id, request.ActingUserId, readAt), ct);
+        var isDirect = channel.Type is ChannelType.Dm or ChannelType.GroupDm;
+        await events.PublishAsync(new ChannelReadMarked(channel.Id, request.ActingUserId, readAt, isDirect), ct);
         await db.SaveChangesAsync(ct);
     }
 }

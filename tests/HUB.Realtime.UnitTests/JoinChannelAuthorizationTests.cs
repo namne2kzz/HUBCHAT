@@ -37,7 +37,7 @@ public sealed class JoinChannelAuthorizationTests
         context.ConnectionId.Returns("conn-1");
         context.User.Returns(new ClaimsPrincipal(new ClaimsIdentity(claims, authenticated ? "test" : null)));
 
-        var hub = new ChatHub(Substitute.For<IPresenceStore>(), access)
+        var hub = new ChatHub(Substitute.For<IPresenceStore>(), access, Substitute.For<IChannelSubscriptions>())
         {
             Context = context,
             Groups  = groups,

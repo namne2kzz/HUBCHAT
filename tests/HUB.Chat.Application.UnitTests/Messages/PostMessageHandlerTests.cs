@@ -451,4 +451,84 @@ public sealed class PostMessageHandlerTests
 
         events.Published.OfType<UserMentioned>().ShouldBeEmpty();
     }
+
+    // ── Attachments (CF-5) ─────────────────────────────────────────────────────
+
+    private static AttachmentInput Image(Guid fileId) =>
+        new(fileId, AttachmentKind.Image, "photo.png", 2048, "image/png", 800, 600);
+
+    [Fact]
+    public async Task AMessageCanBePostedWithAttachments()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author  = Guid.NewGuid();
+        var channel = ChannelWith(author);
+        lease.Context.Channels.Add(channel);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var fileId = Guid.NewGuid();
+        var result = await new PostMessageHandler(lease.Context, new RecordingEventPublisher()).Handle(
+            new PostMessageCommand(channel.Id, "look", MessageFormat.Plain, null, [], author, Attachments: [Image(fileId)]),
+            CancellationToken.None);
+
+        result.Attachments.Count.ShouldBe(1);
+
+        await using var verify = lease.NewContext();
+        var stored = await verify.Messages.AsNoTracking().Include(m => m.Attachments).SingleAsync();
+        var a = stored.Attachments.ShouldHaveSingleItem();
+        a.Kind.ShouldBe(AttachmentKind.Image);
+        a.Url.ShouldBe(fileId.ToString());   // Chat stores the Media file id as the reference
+        a.Name.ShouldBe("photo.png");
+    }
+
+    [Fact]
+    public async Task AnAttachmentOnlyMessageNeedsNoText()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author  = Guid.NewGuid();
+        var channel = ChannelWith(author);
+        lease.Context.Channels.Add(channel);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        // Sharing an image with no caption is normal; the empty body must not be rejected.
+        var result = await new PostMessageHandler(lease.Context, new RecordingEventPublisher()).Handle(
+            new PostMessageCommand(channel.Id, "", MessageFormat.Plain, null, [], author, Attachments: [Image(Guid.NewGuid())]),
+            CancellationToken.None);
+
+        result.Attachments.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AnEmptyMessageWithNoAttachmentsIsRejected()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author  = Guid.NewGuid();
+        var channel = ChannelWith(author);
+        lease.Context.Channels.Add(channel);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        await Should.ThrowAsync<DomainException>(() => new PostMessageHandler(lease.Context, new RecordingEventPublisher())
+            .Handle(new PostMessageCommand(channel.Id, "   ", MessageFormat.Plain, null, [], author), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task MessageSentCarriesTheAttachmentsForRealtime()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var author  = Guid.NewGuid();
+        var channel = ChannelWith(author);
+        lease.Context.Channels.Add(channel);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var events = new RecordingEventPublisher();
+        await new PostMessageHandler(lease.Context, events).Handle(
+            new PostMessageCommand(channel.Id, "", MessageFormat.Plain, null, [], author, Attachments: [Image(Guid.NewGuid())]),
+            CancellationToken.None);
+
+        // Realtime recipients render the image immediately, so the event must carry it (not just a preview).
+        var sent = events.Published.OfType<MessageSent>().ShouldHaveSingleItem();
+        sent.Attachments.ShouldNotBeNull();
+        sent.Attachments!.Count.ShouldBe(1);
+        sent.Preview.ShouldContain("📎");
+    }
 }
