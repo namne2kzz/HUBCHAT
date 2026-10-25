@@ -233,6 +233,9 @@
 .bub-attachments { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; max-width: 100%; }
 .bub-attachments-me { align-items: flex-end; }
 
+.bub-unfurls { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; max-width: 100%; }
+.bub-unfurls-me { align-items: flex-end; }
+
 .bub-reactions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
 .bub-reactions-me { justify-content: flex-end; }
 .reaction-chip {

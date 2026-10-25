@@ -5,6 +5,7 @@ using HUB.Chat.Application.Channels.Commands.JoinChannel;
 using HUB.Chat.Application.Channels.Commands.LeaveChannel;
 using HUB.Chat.Application.Channels.Commands.MarkRead;
 using HUB.Chat.Application.Channels.Commands.OpenDirectMessage;
+using HUB.Chat.Application.Channels.Commands.OpenGroupDm;
 using HUB.Chat.Application.Channels.Commands.ArchiveChannel;
 using HUB.Chat.Application.Channels.Commands.OpenLinkedThread;
 using HUB.Chat.Application.Channels.Commands.ChangeChannelVisibility;
@@ -226,6 +227,19 @@ public sealed class ChannelsController(ISender mediator, ICurrentUser currentUse
     public async Task<IActionResult> OpenDirectMessage(Guid targetUserId, [FromQuery] Guid workspaceId, CancellationToken ct)
     {
         var dto = await mediator.Send(new OpenDirectMessageCommand(workspaceId, targetUserId, currentUser.Id), ct);
+        return Ok(dto);
+    }
+
+    /// <summary>Opens (find-or-create) a group direct message with 2–7 other people.</summary>
+    /// <param name="request">Workspace + the other members.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>200 with the group DM channel (existing or newly created).</returns>
+    [HttpPost("group-dm")]
+    [ProducesResponseType<ChannelDto>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> OpenGroupDm([FromBody] OpenGroupDmRequest request, CancellationToken ct)
+    {
+        var dto = await mediator.Send(
+            new OpenGroupDmCommand(request.WorkspaceId, request.MemberIds, currentUser.Id), ct);
         return Ok(dto);
     }
 

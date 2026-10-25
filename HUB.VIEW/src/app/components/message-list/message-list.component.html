@@ -60,6 +60,7 @@
                 </div>
               }
               <ng-container *ngTemplateOutlet="attachmentsTpl; context: { $implicit: row }" />
+              <ng-container *ngTemplateOutlet="unfurlTpl; context: { $implicit: row }" />
               <ng-container *ngTemplateOutlet="hoverTpl; context: { $implicit: row }" />
             </div>
           }
@@ -109,6 +110,7 @@
                 </div>
               }
               <ng-container *ngTemplateOutlet="attachmentsTpl; context: { $implicit: row }" />
+              <ng-container *ngTemplateOutlet="unfurlTpl; context: { $implicit: row }" />
               <ng-container *ngTemplateOutlet="hoverTpl; context: { $implicit: row }" />
             </div>
           }
@@ -237,6 +239,17 @@
     <div class="bub-attachments" [class.bub-attachments-me]="row.isOwn">
       @for (a of row.msg.attachments; track a.id) {
         <app-attachment-view [attachment]="a" />
+      }
+    </div>
+  }
+</ng-template>
+
+<!-- ── Work-item link previews (DASHBOARD) ──────────────────────────────────── -->
+<ng-template #unfurlTpl let-row>
+  @if (row.workItemKeys.length) {
+    <div class="bub-unfurls" [class.bub-unfurls-me]="row.isOwn">
+      @for (key of row.workItemKeys; track key) {
+        <app-work-item-unfurl [key]="key" />
       }
     </div>
   }

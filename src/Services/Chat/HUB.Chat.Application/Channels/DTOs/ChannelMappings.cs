@@ -28,7 +28,8 @@ public static class ChannelMappings
             c.Members.Count, c.CreatedAt, c.LinkType, c.LinkExternalKey, c.LinkUrl,
             IsMember: member is not null,
             OtherUserId: otherUserId ?? OtherParticipant(c, actingUserId),
-            MyRole: member?.Role);
+            MyRole: member?.Role,
+            GroupMemberIds: c.Type == ChannelType.GroupDm ? [.. c.Members.Select(m => m.UserId)] : null);
     }
 
     /// <summary>For a DM or group DM, the first member who is not the acting user; null for other channels.</summary>

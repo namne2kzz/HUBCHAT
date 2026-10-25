@@ -23,13 +23,14 @@ import { NotificationDto, NotificationType } from '../models/notification.model'
 import { CreateChannelDialogComponent } from '../components/create-channel-dialog/create-channel-dialog.component';
 import { ConfirmDialogComponent } from '../components/confirm-dialog/confirm-dialog.component';
 import { CustomStatusDialogComponent } from '../components/custom-status-dialog/custom-status-dialog.component';
+import { GroupDmDialogComponent } from '../components/group-dm-dialog/group-dm-dialog.component';
 
 export type SideTab = 'channels' | 'notifications' | 'settings';
 
 @Component({
   selector: 'app-shell-layout',
   standalone: true,
-  imports: [RouterOutlet, CreateChannelDialogComponent, ConfirmDialogComponent, CustomStatusDialogComponent, DatePipe, NgClass],
+  imports: [RouterOutlet, CreateChannelDialogComponent, ConfirmDialogComponent, CustomStatusDialogComponent, GroupDmDialogComponent, DatePipe, NgClass],
   templateUrl: './shell-layout.component.html',
   styleUrl: './shell-layout.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -134,6 +135,16 @@ export class ShellLayoutComponent implements OnInit {
   private readonly workspaceMembers  = signal<DirectoryUser[]>([]);
   /** Id of the member currently being opened as a DM (shows a spinner). */
   protected readonly openingDmForId  = signal<string | null>(null);
+
+  /** Whether the "New group message" dialog is open. */
+  protected readonly groupDmOpen  = signal(false);
+  /** True while a group DM is being opened. */
+  protected readonly creatingGroup = signal(false);
+  /** People offered in the group dialog: workspace members minus the current user. */
+  protected readonly groupCandidates = computed(() => {
+    const me = this.auth.currentUser()?.id;
+    return this.workspaceMembers().filter(m => m.id !== me && !m.isDeleted);
+  });
 
   // ── Repo groups (collapse/expand) ─────────────────────────────────────────
   /** Per-repo collapsed state: repoId → true when collapsed. */
@@ -244,6 +255,16 @@ export class ShellLayoutComponent implements OnInit {
    * @param ch DM channel.
    */
   protected dmName(ch: ChannelDto): string {
+    // Group DM: name it from its members (everyone but me), e.g. "An, Bình, +2".
+    if (ch.type === ChannelType.GroupDm && ch.groupMemberIds?.length) {
+      const me = this.auth.currentUser()?.id;
+      const names = ch.groupMemberIds
+        .filter(id => id !== me)
+        .map(id => this.workspaceMembers().find(m => m.id === id)?.name ?? '…');
+      if (!names.length) return ch.name;
+      const shown = names.slice(0, 3).join(', ');
+      return names.length > 3 ? `${shown} +${names.length - 3}` : shown;
+    }
     const uid = ch.otherUserId;
     return (uid ? this.workspaceMembers().find(m => m.id === uid)?.name : null) ?? ch.name;
   }
@@ -334,6 +355,28 @@ export class ShellLayoutComponent implements OnInit {
           this.navigate(ch);
         },
         error: () => this.openingDmForId.set(null),
+      });
+  }
+
+  /** Opens (find-or-creates) a group DM with the chosen people, then navigates to it. */
+  protected createGroupDm(memberIds: string[]): void {
+    if (this.creatingGroup()) return;
+    this.creatingGroup.set(true);
+    this.channelSvc
+      .openGroupDm(this.workspaceId(), memberIds)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: ch => {
+          if (!this.channels().some(c => c.id === ch.id)) {
+            this.channels.update(cs => [...cs, ch]);
+            this.channelSvc.updateCache(this.channels());
+            this.dmLastActivity.update(m => ({ ...m, [ch.id]: new Date(ch.createdAt).getTime() }));
+          }
+          this.creatingGroup.set(false);
+          this.groupDmOpen.set(false);
+          this.navigate(ch);
+        },
+        error: () => this.creatingGroup.set(false),
       });
   }
 

@@ -51,6 +51,15 @@ public sealed class DashboardClient(HttpClient http) : IDashboardClient
     }
 
     /// <inheritdoc />
+    public async Task<WorkItemContext?> GetWorkItemByKeyAsync(string key, CancellationToken ct)
+    {
+        using var response = await http.GetAsync($"work-items/by-key/{Uri.EscapeDataString(key)}", ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<WorkItemContext>(ct);
+    }
+
+    /// <inheritdoc />
     public async Task<UserSettings?> GetUserSettingsAsync(Guid userId, CancellationToken ct)
     {
         using var response = await http.GetAsync($"users/{userId}/settings", ct);

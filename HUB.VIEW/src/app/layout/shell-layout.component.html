@@ -162,11 +162,15 @@
             <p class="sub-empty">{{ searchQuery() ? 'No match.' : 'No channels yet.' }}</p>
           }
 
-          <!-- DIRECT MESSAGES — only existing DM channels, sorted online + recency -->
-          @if (filteredDmChannels().length > 0 || (dmChannels().length > 0 && searchQuery())) {
+          <!-- DIRECT MESSAGES — existing DM/group channels, sorted online + recency -->
+          @if (!searchQuery() || filteredDmChannels().length > 0 || dmChannels().length > 0) {
             <div class="sub-section">
-              <div class="section-head">
+              <div class="section-head section-head--flex">
                 <span class="section-label">Direct Messages</span>
+                <button type="button" class="icon-btn-xs" title="New group message"
+                        aria-label="New group message" (click)="groupDmOpen.set(true)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
               </div>
               @for (ch of filteredDmChannels(); track ch.id) {
                 <button
@@ -437,12 +441,21 @@
     (close)="createDialogOpen.set(false)" />
 }
 
-<!-- Custom status dialog (CF-19) -->
+<!-- Custom status dialog -->
 @if (customStatusOpen() && auth.currentUser(); as me) {
   <app-custom-status-dialog
     [userId]="me.id"
     (saved)="customStatusOpen.set(false)"
     (close)="customStatusOpen.set(false)" />
+}
+
+<!-- New group message dialog -->
+@if (groupDmOpen()) {
+  <app-group-dm-dialog
+    [members]="groupCandidates()"
+    [creating]="creatingGroup()"
+    (create)="createGroupDm($event)"
+    (close)="groupDmOpen.set(false)" />
 }
 
 <!-- App-wide confirm dialog (rendered on demand by ConfirmDialogService) -->

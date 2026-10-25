@@ -10,7 +10,10 @@ import { MentionLabel, renderMarkdown } from '../../utils/markdown.util';
 import { groupReactions } from '../../utils/reaction.util';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { PresenceService } from '../../services/presence.service';
+import { ConfigService } from '../../core/services/config.service';
 import { AttachmentViewComponent } from '../attachment-view/attachment-view.component';
+import { WorkItemUnfurlComponent } from '../work-item-unfurl/work-item-unfurl.component';
+import { extractWorkItemKeys } from '../../utils/work-item-link.util';
 
 interface MessageRow {
   msg: MessageDto;
@@ -40,6 +43,8 @@ interface MessageRow {
   isPinned: boolean;
   /** Message body rendered from Markdown to safe HTML. */
   html: string;
+  /** DASHBOARD work-item keys linked in the body, to unfurl as preview cards; empty when none. */
+  workItemKeys: string[];
 }
 
 /**
@@ -50,7 +55,7 @@ interface MessageRow {
 @Component({
   selector: 'app-message-list',
   standalone: true,
-  imports: [DatePipe, NgTemplateOutlet, AttachmentViewComponent],
+  imports: [DatePipe, NgTemplateOutlet, AttachmentViewComponent, WorkItemUnfurlComponent],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -59,6 +64,7 @@ export class MessageListComponent {
   private readonly document = inject(DOCUMENT);
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly presence = inject(PresenceService);
+  private readonly config   = inject(ConfigService);
   private readonly host     = inject(ElementRef<HTMLElement>);
 
   /** Whether the view is scrolled to (near) the bottom. Drives auto-follow + the scroll-down button. */
@@ -299,7 +305,8 @@ export class MessageListComponent {
       const quoted     = msg.replyToId ? (this.messagesById()[msg.replyToId] ?? null) : null;
       const forwarded  = !!msg.forwardedFromId;
       const isPinned   = !!msg.isPinned;
-      return { msg, showHeader, isOwn, isContinued, dateLabel, mentionsMe, reactions, isDeleted, canEdit, canDelete, quoted, forwarded, isPinned, html };
+      const workItemKeys = isDeleted ? [] : extractWorkItemKeys(msg.body, this.config.dashboardUrl);
+      return { msg, showHeader, isOwn, isContinued, dateLabel, mentionsMe, reactions, isDeleted, canEdit, canDelete, quoted, forwarded, isPinned, html, workItemKeys };
     });
   });
 

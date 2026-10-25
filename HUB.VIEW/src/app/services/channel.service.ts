@@ -167,4 +167,15 @@ export class ChannelService {
     return this.http.post<ChannelDto>(
       `${this.apiUrl}/dm/${targetUserId}`, {}, { params: { workspaceId } });
   }
+
+  /**
+   * Opens (find-or-create) a group direct message with 2–7 other people. The backend matches a
+   * group by its exact member set, so reopening the same people returns the same channel.
+   * @param workspaceId Workspace used if a new group must be created.
+   * @param memberIds   The other participants (the caller is added server-side).
+   * @returns Observable of the group DM channel.
+   */
+  openGroupDm(workspaceId: string, memberIds: string[]): Observable<ChannelDto> {
+    return this.http.post<ChannelDto>(`${this.apiUrl}/group-dm`, { workspaceId, memberIds });
+  }
 }

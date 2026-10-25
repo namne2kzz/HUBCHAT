@@ -33,6 +33,12 @@ public interface IDashboardClient
     /// <returns>The context, or null if the work item does not exist (404).</returns>
     Task<WorkItemContext?> GetWorkItemAsync(Guid workItemId, CancellationToken ct);
 
+    /// <summary>Gets a work item's context by its human key (e.g. "NFLOW-142"), for unfurling a pasted link.</summary>
+    /// <param name="key">The work item key.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The context, or null if the key is malformed or the item does not exist (404).</returns>
+    Task<WorkItemContext?> GetWorkItemByKeyAsync(string key, CancellationToken ct);
+
     /// <summary>Gets all persisted display-preference settings for a user.</summary>
     /// <param name="userId">The user id.</param>
     /// <param name="ct">Cancellation token.</param>

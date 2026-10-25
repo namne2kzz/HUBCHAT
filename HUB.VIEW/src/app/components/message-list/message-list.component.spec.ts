@@ -4,6 +4,7 @@ import { MessageDto } from '../../models/message.model';
 import { DirectoryUser } from '../../models/directory.model';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { PresenceService } from '../../services/presence.service';
+import { ConfigService } from '../../core/services/config.service';
 
 /**
  * Covers the message list's grouping and rendering logic.
@@ -67,6 +68,8 @@ describe('MessageListComponent', () => {
         // Stub presence so the real service (HttpClient + realtime) isn't pulled in; the list only
         // reads a peer's custom-status emoji from it.
         { provide: PresenceService, useValue: { getCustomStatus: () => null } },
+        // Work-item unfurl reads dashboardUrl to detect links; no links in these tests.
+        { provide: ConfigService, useValue: { dashboardUrl: 'http://dash', apiBaseUrl: 'http://api' } },
       ],
     }).compileComponents();
     confirmSpy = spyOn(confirmStub, 'confirm').and.callThrough();

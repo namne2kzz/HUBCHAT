@@ -39,6 +39,12 @@ public interface IDirectoryService
     /// <param name="ct">Cancellation token.</param>
     Task<WorkItemContext?> GetWorkItemAsync(Guid workItemId, CancellationToken ct);
 
+    /// <summary>Gets a work item's context by its human key (e.g. "NFLOW-142"), cached read-through.</summary>
+    /// <param name="key">The work item key.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The context, or null when malformed/not found.</returns>
+    Task<WorkItemContext?> GetWorkItemByKeyAsync(string key, CancellationToken ct);
+
     /// <summary>
     /// Gets a user's persisted display-preference settings from DASHBOARD.
     /// Cached with a short TTL (30 s) so changes made in DASHBOARD propagate quickly.

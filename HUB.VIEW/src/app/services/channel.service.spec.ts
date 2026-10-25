@@ -189,6 +189,15 @@ describe('ChannelService', () => {
       expect(req.request.params.get('workspaceId')).toBe('w1');
       req.flush(channel({ type: 2, otherUserId: 'u2' }));
     });
+
+    it('opens a group DM with the members in the body', () => {
+      service.openGroupDm('w1', ['u2', 'u3']).subscribe();
+
+      const req = http.expectOne(`${CHANNELS}/group-dm`);
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({ workspaceId: 'w1', memberIds: ['u2', 'u3'] });
+      req.flush(channel({ type: 3, groupMemberIds: ['u1', 'u2', 'u3'] }));
+    });
   });
 
   describe('local cache', () => {

@@ -1,0 +1,34 @@
+:host { display: block; max-width: 360px; }
+
+.wi-card {
+  display: flex; align-items: stretch; gap: 0; width: 100%; text-align: left;
+  padding: 0; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-surface); cursor: pointer;
+  transition: background .12s, border-color .12s;
+  &:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+}
+.wi-accent { width: 3px; flex-shrink: 0; background: var(--accent); }
+.wi-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; padding: 9px 11px; }
+.wi-top { display: flex; align-items: center; gap: 8px; }
+.wi-key { font-size: 0.74rem; font-weight: 700; color: var(--accent-text); letter-spacing: 0.02em; }
+.wi-state {
+  font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+  padding: 1px 6px; border-radius: 999px;
+  color: var(--text-secondary); background: var(--bg-surface-2);
+}
+.wi-title {
+  font-size: 0.84rem; color: var(--text-primary); line-height: 1.35;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.wi-open { flex-shrink: 0; align-self: center; margin-right: 10px; color: var(--text-muted); }
+
+/* State colours — tolerant of any slug; a few common ones get accent tints. */
+.wi-state--done,
+.wi-state--closed,
+.wi-state--completed { color: var(--success, #15803d); background: color-mix(in srgb, var(--success, #15803d) 14%, transparent); }
+.wi-state--in-progress,
+.wi-state--inprogress,
+.wi-state--active { color: var(--accent-text); background: var(--accent-soft); }
+.wi-state--blocked { color: var(--danger); background: var(--danger-soft); }

@@ -139,7 +139,13 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   protected readonly channelTitle = computed(() => {
     const ch = this.channel();
     if (!ch) return '';
-    if ((ch.type === ChannelType.Dm || ch.type === ChannelType.GroupDm) && ch.otherUserId) {
+    // Group DM: join member names (everyone but me).
+    if (ch.type === ChannelType.GroupDm && ch.groupMemberIds?.length) {
+      const me = this.currentUserId();
+      const names = ch.groupMemberIds.filter(id => id !== me).map(id => this.authors()[id]?.name ?? '…');
+      return names.length ? names.join(', ') : ch.name;
+    }
+    if (ch.type === ChannelType.Dm && ch.otherUserId) {
       return this.authors()[ch.otherUserId]?.name ?? ch.name;
     }
     return ch.name;
@@ -582,8 +588,11 @@ export class ChannelDetailPageComponent implements OnInit, AfterViewInit, OnDest
   private loadChannel(): void {
     this.channelSvc.get(this.channelId).subscribe(ch => {
       this.channel.set(ch);
-      // Resolve the other DM participant's name for the header title.
-      if ((ch.type === ChannelType.Dm || ch.type === ChannelType.GroupDm) && ch.otherUserId) {
+      // Resolve participant names for the header title: a group DM needs all members, a 1-1 DM
+      // just the other person.
+      if (ch.type === ChannelType.GroupDm && ch.groupMemberIds?.length) {
+        this.resolveAuthors(ch.groupMemberIds.map(id => ({ authorId: id } as MessageDto)));
+      } else if (ch.type === ChannelType.Dm && ch.otherUserId) {
         this.resolveAuthors([{ authorId: ch.otherUserId } as MessageDto]);
       }
     });

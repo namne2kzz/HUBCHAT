@@ -1,8 +1,9 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { forkJoin, map, Observable, of, shareReplay, tap } from 'rxjs';
+import { catchError, forkJoin, map, Observable, of, shareReplay, tap } from 'rxjs';
 import { ConfigService } from '../core/services/config.service';
 import { DirectoryUser, UserMemberships, WorkItemContext } from '../models/directory.model';
+import { skipErrorToast } from '../core/http/http-context';
 
 /**
  * Resolves DASHBOARD directory data (users, memberships, work items) via the HUB dashboard-gateway.
@@ -78,6 +79,18 @@ export class DirectoryService {
   /** Gets a work item's context for linking a discussion thread. @param id Work item id. */
   getWorkItem(id: string): Observable<WorkItemContext | null> {
     return this.http.get<WorkItemContext | null>(`${this.apiUrl}/work-items/${id}`);
+  }
+
+  /**
+   * Gets a work item's context by its human key (e.g. "NFLOW-142"), for unfurling a pasted link.
+   * Returns null on 404/error without a toast — a bad or inaccessible key just doesn't render a card.
+   * @param key Work item key.
+   * @returns Observable of the context, or null.
+   */
+  getWorkItemByKey(key: string): Observable<WorkItemContext | null> {
+    return this.http
+      .get<WorkItemContext>(`${this.apiUrl}/work-items/by-key/${encodeURIComponent(key)}`, { context: skipErrorToast() })
+      .pipe(catchError(() => of(null)));
   }
 
   /** Empty-safe helper returning of(null) for missing ids. @param id Optional id. */

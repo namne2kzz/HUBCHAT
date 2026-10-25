@@ -53,7 +53,11 @@ public sealed class ListChannelsHandler(IChatDbContext db) : IRequestHandler<Lis
                                && c.Members.Any(m => m.UserId == acting
                                     && msg.CreatedAt > (m.LastReadAt ?? m.JoinedAt)))
                     .Take(UnreadCap)
-                    .Count()))
+                    .Count(),
+                // Group DMs are named from their people client-side, so carry the member ids.
+                GroupMemberIds: c.Type == ChannelType.GroupDm
+                    ? c.Members.Select(m => m.UserId).ToList()
+                    : null))
             .ToListAsync(ct);
     }
 }

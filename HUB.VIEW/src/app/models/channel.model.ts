@@ -46,6 +46,8 @@ export interface ChannelDto {
    * Seeds the sidebar badge on load; realtime then keeps the badge current.
    */
   unreadCount?: number;
+  /** Group DM member ids — used to name the group from its people; null for other channels. */
+  groupMemberIds?: string[] | null;
 }
 
 /** Pushed to the reader's own sessions when they read a channel elsewhere (another tab/device). */

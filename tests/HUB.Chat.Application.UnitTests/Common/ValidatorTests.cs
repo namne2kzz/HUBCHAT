@@ -1,4 +1,5 @@
 using HUB.Chat.Application.Channels.Commands.CreateChannel;
+using HUB.Chat.Application.Channels.Commands.OpenGroupDm;
 using HUB.Chat.Application.Channels.Commands.OpenLinkedThread;
 using HUB.Chat.Application.Messages.Commands.PostMessage;
 using HUB.Chat.Domain.Enums;
@@ -221,5 +222,46 @@ public sealed class ValidatorTests
 
         // The title becomes the channel name, so this limit has to agree with CreateChannel's 100.
         new OpenLinkedThreadValidator().Validate(command).IsValid.ShouldBeFalse();
+    }
+
+    // ── Group DM ────────────────────────────────────────────────────────────
+
+    private static OpenGroupDmCommand Group(Guid acting, params Guid[] others) =>
+        new(Guid.NewGuid(), others, acting);
+
+    [Theory]
+    [InlineData(2)]  // 3 total
+    [InlineData(7)]  // 8 total
+    public void AGroupWithTwoToSevenOthersIsValid(int others)
+    {
+        var acting = Guid.NewGuid();
+        var ids = Enumerable.Range(0, others).Select(_ => Guid.NewGuid()).ToArray();
+        new OpenGroupDmValidator().Validate(Group(acting, ids)).IsValid.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(1)]  // that is just a DM
+    [InlineData(8)]  // 9 total — too big for a "small group"
+    public void AGroupOutsideTheThreeToEightRangeIsRejected(int others)
+    {
+        var acting = Guid.NewGuid();
+        var ids = Enumerable.Range(0, others).Select(_ => Guid.NewGuid()).ToArray();
+        new OpenGroupDmValidator().Validate(Group(acting, ids)).IsValid.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AGroupWithDuplicateMembersIsRejected()
+    {
+        var dup = Guid.NewGuid();
+        new OpenGroupDmValidator().Validate(Group(Guid.NewGuid(), dup, dup, Guid.NewGuid()))
+            .IsValid.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AGroupThatListsTheCallerIsRejected()
+    {
+        var me = Guid.NewGuid();
+        new OpenGroupDmValidator().Validate(Group(me, me, Guid.NewGuid()))
+            .IsValid.ShouldBeFalse();
     }
 }

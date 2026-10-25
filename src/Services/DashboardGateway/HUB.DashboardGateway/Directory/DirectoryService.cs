@@ -92,6 +92,10 @@ public sealed class DirectoryService(IDashboardClient dashboard, IDistributedCac
         GetOrPullAsync(DirectoryCacheKeys.WorkItem(workItemId), WorkItemTtl, () => dashboard.GetWorkItemAsync(workItemId, ct), ct);
 
     /// <inheritdoc />
+    public Task<WorkItemContext?> GetWorkItemByKeyAsync(string key, CancellationToken ct) =>
+        GetOrPullAsync(DirectoryCacheKeys.WorkItemByKey(key), WorkItemTtl, () => dashboard.GetWorkItemByKeyAsync(key, ct), ct);
+
+    /// <inheritdoc />
     public Task<UserSettings?> GetUserSettingsAsync(Guid userId, CancellationToken ct) =>
         GetOrPullAsync(DirectoryCacheKeys.UserSettings(userId), SettingsTtl, () => dashboard.GetUserSettingsAsync(userId, ct), ct);
 

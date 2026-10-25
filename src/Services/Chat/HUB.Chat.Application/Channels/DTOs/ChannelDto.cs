@@ -27,4 +27,9 @@ public sealed record ChannelDto(
     /// Unread top-level messages for the acting user (others' messages after their read point), capped at
     /// <c>ListChannelsHandler.UnreadCap</c>. Only computed by the channel list; 0 elsewhere and for non-members.
     /// </summary>
-    int UnreadCount = 0);
+    int UnreadCount = 0,
+    /// <summary>
+    /// For a group DM: every member's user id, so the client can name the group from its people.
+    /// Empty for other channel kinds (they are named by <c>Name</c> or <c>OtherUserId</c>).
+    /// </summary>
+    IReadOnlyList<Guid>? GroupMemberIds = null);

@@ -34,6 +34,11 @@ public static class DirectoryCacheKeys
     /// <returns>Fully qualified cache key.</returns>
     public static string WorkItem(Guid workItemId) => $"{AppPrefix}:dir:workitem:{workItemId}";
 
+    /// <summary>Key holding one work item's context looked up by its human key (e.g. "NFLOW-142").</summary>
+    /// <param name="key">The work item key.</param>
+    /// <returns>Fully qualified cache key.</returns>
+    public static string WorkItemByKey(string key) => $"{AppPrefix}:dir:workitem:key:{key}";
+
     /// <summary>Key holding one user's display-preference settings.</summary>
     /// <param name="userId">The user id.</param>
     /// <returns>Fully qualified cache key.</returns>

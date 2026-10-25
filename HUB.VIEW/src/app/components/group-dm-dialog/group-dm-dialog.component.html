@@ -1,0 +1,49 @@
+<div class="gdm-overlay" (click)="close.emit()">
+  <div class="gdm-dialog" (click)="$event.stopPropagation()">
+    <header class="gdm-head">
+      <span>New group message</span>
+      <button type="button" class="gdm-close" (click)="close.emit()" aria-label="Close">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+
+    @if (selected().length) {
+      <div class="gdm-chips">
+        @for (m of selected(); track m.id) {
+          <span class="gdm-chip">
+            {{ m.name }}
+            <button type="button" class="gdm-chip-x" (click)="remove(m.id)" aria-label="Remove">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </span>
+        }
+      </div>
+    }
+
+    <input class="gdm-search" [value]="query()" (input)="onQuery($event)"
+           placeholder="Add people…" autofocus aria-label="Search people" />
+
+    <p class="gdm-hint">Pick {{ MIN }}–{{ MAX }} people ({{ selected().length }} selected).</p>
+
+    <div class="gdm-list">
+      @for (m of results(); track m.id) {
+        <button type="button" class="gdm-item" (click)="add(m)" [disabled]="selected().length >= MAX">
+          <span class="gdm-avatar">{{ m.name.charAt(0).toUpperCase() }}</span>
+          <span class="gdm-meta">
+            <span class="gdm-name">{{ m.name }}</span>
+            <span class="gdm-email">{{ m.email }}</span>
+          </span>
+        </button>
+      } @empty {
+        <p class="gdm-empty">No people match.</p>
+      }
+    </div>
+
+    <footer class="gdm-foot">
+      <button type="button" class="gdm-cancel" (click)="close.emit()">Cancel</button>
+      <button type="button" class="gdm-create" (click)="submit()" [disabled]="!canCreate()">
+        {{ creating() ? 'Creating…' : 'Create group' }}
+      </button>
+    </footer>
+  </div>
+</div>

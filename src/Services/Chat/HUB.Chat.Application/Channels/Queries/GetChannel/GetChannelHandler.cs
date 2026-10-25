@@ -30,7 +30,10 @@ public sealed class GetChannelHandler(IChatDbContext db) : IRequestHandler<GetCh
                         ? c.Members.Where(m => m.UserId != request.ActingUserId).Select(m => (Guid?)m.UserId).FirstOrDefault()
                         : null,
                     MyRole: c.Members.Where(m => m.UserId == request.ActingUserId)
-                        .Select(m => (ChannelMemberRole?)m.Role).FirstOrDefault()),
+                        .Select(m => (ChannelMemberRole?)m.Role).FirstOrDefault(),
+                    GroupMemberIds: c.Type == ChannelType.GroupDm
+                        ? c.Members.Select(m => m.UserId).ToList()
+                        : null),
                 c.Type,
                 IsMember = c.Members.Any(m => m.UserId == request.ActingUserId),
             })

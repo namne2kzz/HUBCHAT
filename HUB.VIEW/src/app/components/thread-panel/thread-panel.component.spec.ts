@@ -6,6 +6,7 @@ import { ThreadPanelComponent } from './thread-panel.component';
 import { MessageService } from '../../services/message.service';
 import { DirectoryService } from '../../services/directory.service';
 import { PresenceService } from '../../services/presence.service';
+import { ConfigService } from '../../core/services/config.service';
 import { MessageDto, MessageFormat } from '../../models/message.model';
 
 /**
@@ -37,6 +38,7 @@ describe('ThreadPanelComponent', () => {
         { provide: DirectoryService, useValue: { getUsers: () => of([]) } },
         // The embedded message list reads peer custom statuses from presence; stub it.
         { provide: PresenceService, useValue: { getCustomStatus: () => null } },
+        { provide: ConfigService, useValue: { dashboardUrl: 'http://dash', apiBaseUrl: 'http://api' } },
       ],
     }).compileComponents();
 

@@ -58,6 +58,13 @@ public static class DirectoryEndpoints
             return wi is null ? Results.NotFound() : Results.Ok(wi);
         });
 
+        // Work-item context by its human key (e.g. "NFLOW-142") — used to unfurl a pasted work-item link.
+        group.MapGet("/work-items/by-key/{key}", async (string key, IDirectoryService directory, CancellationToken ct) =>
+        {
+            var wi = await directory.GetWorkItemByKeyAsync(key, ct);
+            return wi is null ? Results.NotFound() : Results.Ok(wi);
+        });
+
         // The caller's own display-preference settings (date format, timezone…) sourced from DASHBOARD.
         group.MapGet("/me/settings", async (ICurrentUser currentUser, IDirectoryService directory, CancellationToken ct) =>
         {
