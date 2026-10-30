@@ -129,7 +129,7 @@ services:
       RabbitMq__Password: ${RABBITMQ_PASSWORD}
       # Token DASHBOARD gửi qua X-Internal-Token header để gọi /internal/channels/*.
       # Phải khớp với HubChat__InternalToken trong DASHBOARD docker-compose.
-      InternalApi__Token: ${HUB_CHAT_INTERNAL_TOKEN:-CHANGE_THIS_INTERNAL_TOKEN_MIN_32_CHARS!}
+      InternalApi__Token: ${HUB_CHAT_INTERNAL_TOKEN:-SECRET_FOR_USE_INTERNAL_API_CALLS_ONLY_WITH32!@$}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
     depends_on:
       postgres: { condition: service_healthy }
@@ -148,8 +148,9 @@ services:
       Jwt__Secret: ${JWT_SECRET}
       Jwt__Issuer: ${JWT_ISSUER}
       Jwt__Audience: ${JWT_AUDIENCE}
-      # Needed by the JoinChannel membership check, which calls chat-service's /internal API.
-      InternalApi__Token: ${INTERNAL_API_TOKEN}
+      # Needed by the JoinChannel membership check, which calls chat-service's /internal API —
+      # so this must match CHAT's InternalApi:Token (the HUB_CHAT pair), not the DASHBOARD one.
+      InternalApi__Token: ${HUB_CHAT_INTERNAL_TOKEN:-SECRET_FOR_USE_INTERNAL_API_CALLS_ONLY_WITH32!@$}
       Chat__InternalBaseUrl: "http://chat:8080/"
       Redis__Connection: ${REDIS_CONNECTION}
       Redis__BackplanePrefix: ${REDIS_BACKPLANE_PREFIX:-hub-rt:docker}

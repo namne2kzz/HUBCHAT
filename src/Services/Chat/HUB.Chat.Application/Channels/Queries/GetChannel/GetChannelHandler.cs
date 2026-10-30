@@ -31,6 +31,9 @@ public sealed class GetChannelHandler(IChatDbContext db) : IRequestHandler<GetCh
                         : null,
                     MyRole: c.Members.Where(m => m.UserId == request.ActingUserId)
                         .Select(m => (ChannelMemberRole?)m.Role).FirstOrDefault(),
+                    // Unread is only computed by the channel list; passed explicitly because an expression
+                    // tree cannot skip an optional parameter and then name a later one (CS9307).
+                    UnreadCount: 0,
                     GroupMemberIds: c.Type == ChannelType.GroupDm
                         ? c.Members.Select(m => m.UserId).ToList()
                         : null),

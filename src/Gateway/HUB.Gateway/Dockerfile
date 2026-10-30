@@ -11,13 +11,17 @@ COPY Directory.Build.props Directory.Packages.props ./
 COPY src/Gateway/HUB.Gateway/HUB.Gateway.csproj                               src/Gateway/HUB.Gateway/
 COPY src/BuildingBlocks/HUB.Shared.Auth/HUB.Shared.Auth.csproj                 src/BuildingBlocks/HUB.Shared.Auth/
 COPY src/BuildingBlocks/HUB.Shared.Observability/HUB.Shared.Observability.csproj src/BuildingBlocks/HUB.Shared.Observability/
-RUN --mount=type=cache,target=/root/.nuget/packages \
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
     dotnet restore src/Gateway/HUB.Gateway/HUB.Gateway.csproj
 
-# Now copy the full source and publish (NuGet cache reused from the restore step).
+# Now copy the full source and publish. The NuGet cache mount is reused, so this is still fast.
+# No --no-restore: a cache mount is scratch space, not a layer, so the packages the restore step
+# downloaded are not guaranteed to still be there (parallel builds share the mount, and a cache
+# prune empties it). --no-restore then fails with NETSDK1064 on a transitive package that central
+# package management does not pin — YARP's System.IO.Hashing, in this service's case.
 COPY . .
-RUN --mount=type=cache,target=/root/.nuget/packages \
-    dotnet publish src/Gateway/HUB.Gateway/HUB.Gateway.csproj -c Release -o /app --no-restore
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
+    dotnet publish src/Gateway/HUB.Gateway/HUB.Gateway.csproj -c Release -o /app
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

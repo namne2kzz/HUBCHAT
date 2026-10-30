@@ -8,3 +8,15 @@
 **/.playwright-mcp
 **/*.user
 .env
+
+# Angular CLI build cache — grows to several GB and is rebuilt inside the image anyway.
+# Without this the daemon transfers the whole cache on every build (minutes of "load build context").
+**/.angular
+
+# Other local-only artefacts that must never reach the build context.
+**/TestResults
+**/coverage
+**/*.log
+**/logs
+**/.idea
+**/.DS_Store

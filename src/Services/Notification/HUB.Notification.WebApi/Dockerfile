@@ -16,13 +16,13 @@ COPY src/BuildingBlocks/HUB.Shared.Auth/HUB.Shared.Auth.csproj                 s
 COPY src/BuildingBlocks/HUB.Shared.Contracts/HUB.Shared.Contracts.csproj       src/BuildingBlocks/HUB.Shared.Contracts/
 COPY src/BuildingBlocks/HUB.Shared.Messaging/HUB.Shared.Messaging.csproj       src/BuildingBlocks/HUB.Shared.Messaging/
 COPY src/BuildingBlocks/HUB.Shared.Observability/HUB.Shared.Observability.csproj src/BuildingBlocks/HUB.Shared.Observability/
-RUN --mount=type=cache,target=/root/.nuget/packages \
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
     dotnet restore src/Services/Notification/HUB.Notification.WebApi/HUB.Notification.WebApi.csproj
 
 # Now copy the full source and publish (NuGet cache reused from the restore step).
 COPY . .
-RUN --mount=type=cache,target=/root/.nuget/packages \
-    dotnet publish src/Services/Notification/HUB.Notification.WebApi/HUB.Notification.WebApi.csproj -c Release -o /app --no-restore
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
+    dotnet publish src/Services/Notification/HUB.Notification.WebApi/HUB.Notification.WebApi.csproj -c Release -o /app
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

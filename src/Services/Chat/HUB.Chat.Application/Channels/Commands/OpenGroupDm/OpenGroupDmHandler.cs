@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using HUB.Chat.Application.Channels.DTOs;
+using HUB.Chat.Application.Common.Exceptions;
 using HUB.Chat.Application.Common.Interfaces;
 using HUB.Chat.Domain.Entities;
 using HUB.Chat.Domain.Enums;
