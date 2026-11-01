@@ -160,7 +160,7 @@ public sealed class ChannelMembershipHandlerTests
         var channel = await SeedChannelAsync(lease.Context, Guid.NewGuid());
 
         var userId = Guid.NewGuid();
-        var result = await new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+        var result = await new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), new RecordingEventPublisher())
             .Handle(new AddChannelMemberCommand(channel.Id, userId), CancellationToken.None);
 
         result.UserId.ShouldBe(userId);
@@ -174,7 +174,7 @@ public sealed class ChannelMembershipHandlerTests
         var channel = await SeedChannelAsync(lease.Context, Guid.NewGuid());
 
         var userId  = Guid.NewGuid();
-        var handler = new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions());
+        var handler = new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), new RecordingEventPublisher());
         var command = new AddChannelMemberCommand(channel.Id, userId);
 
         await handler.Handle(command, CancellationToken.None);
@@ -191,7 +191,7 @@ public sealed class ChannelMembershipHandlerTests
     {
         await using var lease = await ChatDbContextFactory.CreateAsync();
 
-        await Should.ThrowAsync<NotFoundException>(() => new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+        await Should.ThrowAsync<NotFoundException>(() => new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), new RecordingEventPublisher())
             .Handle(new AddChannelMemberCommand(Guid.NewGuid(), Guid.NewGuid()), CancellationToken.None));
     }
 
@@ -202,7 +202,7 @@ public sealed class ChannelMembershipHandlerTests
         var owner   = Guid.NewGuid();
         var channel = await SeedChannelAsync(lease.Context, owner);
 
-        var result = await new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+        var result = await new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), new RecordingEventPublisher())
             .Handle(new AddChannelMemberCommand(channel.Id, owner), CancellationToken.None);
 
         // Sprint sync includes the creator in the member list it replays. Re-adding them as a plain
@@ -270,7 +270,7 @@ public sealed class ChannelMembershipHandlerTests
         // The exploit this closes: the public endpoint used to add whoever asked, so knowing a private
         // channel's id was enough to join it and read everything.
         await Should.ThrowAsync<ForbiddenException>(() =>
-            new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions())
+            new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), new RecordingEventPublisher())
                 .Handle(new AddChannelMemberCommand(channel.Id, stranger, stranger), CancellationToken.None));
 
         (await MemberCountAsync(lease, channel.Id)).ShouldBe(1);
@@ -325,7 +325,7 @@ public sealed class ChannelMembershipHandlerTests
         var permissions = new FakeWorkspacePermissions();
         var newcomer    = Guid.NewGuid();
 
-        await new AddChannelMemberHandler(lease.Context, permissions)
+        await new AddChannelMemberHandler(lease.Context, permissions, new RecordingEventPublisher())
             .Handle(new AddChannelMemberCommand(channel.Id, newcomer, manager), CancellationToken.None);
         await new RemoveChannelMemberHandler(lease.Context, permissions, new RecordingEventPublisher())
             .Handle(new RemoveChannelMemberCommand(channel.Id, newcomer, manager), CancellationToken.None);
@@ -343,7 +343,7 @@ public sealed class ChannelMembershipHandlerTests
         var permissions = new FakeWorkspacePermissions()
             .Grant(channel.WorkspaceId, WorkspacePermissionNames.ManageChannels);
 
-        var added = await new AddChannelMemberHandler(lease.Context, permissions)
+        var added = await new AddChannelMemberHandler(lease.Context, permissions, new RecordingEventPublisher())
             .Handle(new AddChannelMemberCommand(channel.Id, Guid.NewGuid(), workspaceMgr), CancellationToken.None);
 
         added.Role.ShouldBe(ChannelMemberRole.Member);
@@ -360,7 +360,7 @@ public sealed class ChannelMembershipHandlerTests
 
         // Workspace-scoped: managing channels in project A says nothing about project B's channels.
         await Should.ThrowAsync<ForbiddenException>(() =>
-            new AddChannelMemberHandler(lease.Context, permissions)
+            new AddChannelMemberHandler(lease.Context, permissions, new RecordingEventPublisher())
                 .Handle(new AddChannelMemberCommand(channel.Id, Guid.NewGuid(), otherWsMgr), CancellationToken.None));
     }
 
@@ -387,6 +387,46 @@ public sealed class ChannelMembershipHandlerTests
         e.ChannelId.ShouldBe(channel.Id);
         e.UserId.ShouldBe(member);
         events.PublishedBeforeSave.ShouldBeTrue("the event must ride the outbox transaction with the removal");
+    }
+
+    [Fact]
+    public async Task AddingAMemberAnnouncesTheAddition()
+    {
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var owner    = Guid.NewGuid();
+        var newcomer = Guid.NewGuid();
+        var channel  = await SeedChannelAsync(lease.Context, owner, ChannelType.Private);
+
+        var events = new RecordingEventPublisher();
+        lease.Context.SavedChanges += (_, _) => events.MarkSaved();
+        await new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), events)
+            .Handle(new AddChannelMemberCommand(channel.Id, newcomer, owner), CancellationToken.None);
+
+        // Realtime pushes the channel to the newcomer only on this event; without it a private
+        // channel they were just added to stays invisible until they reload the page.
+        var e = events.Published.OfType<ChannelMemberAdded>().ShouldHaveSingleItem();
+        e.ChannelId.ShouldBe(channel.Id);
+        e.UserId.ShouldBe(newcomer);
+        events.PublishedBeforeSave.ShouldBeTrue("the event must ride the outbox transaction with the addition");
+    }
+
+    [Fact]
+    public async Task AddingSomebodyWhoIsAlreadyAMemberAnnouncesNothing()
+    {
+        // The command is idempotent, so a repeated add must not re-announce — a client that
+        // retried would otherwise see the channel pushed to it again.
+        await using var lease = await ChatDbContextFactory.CreateAsync();
+        var owner   = Guid.NewGuid();
+        var member  = Guid.NewGuid();
+        var channel = await SeedChannelAsync(lease.Context, owner, ChannelType.Private);
+        channel.AddMember(member);
+        await lease.Context.SaveChangesAsync(CancellationToken.None);
+
+        var events = new RecordingEventPublisher();
+        await new AddChannelMemberHandler(lease.Context, new FakeWorkspacePermissions(), events)
+            .Handle(new AddChannelMemberCommand(channel.Id, member, owner), CancellationToken.None);
+
+        events.Published.ShouldBeEmpty();
     }
 
     [Fact]

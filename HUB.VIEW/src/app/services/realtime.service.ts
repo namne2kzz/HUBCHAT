@@ -4,7 +4,7 @@ import { Subject } from 'rxjs';
 import { ConfigService } from '../core/services/config.service';
 import { AuthService } from './auth.service';
 import { MessageDeletedEvent, MessageEditedEvent, MessageReceivedEvent, ReactionAddedEvent, ReactionRemovedEvent, TypingEvent } from '../models/message.model';
-import { ChannelAccessRevokedEvent, ChannelReadEvent, ReadReceiptEvent } from '../models/channel.model';
+import { ChannelAccessGrantedEvent, ChannelAccessRevokedEvent, ChannelReadEvent, ReadReceiptEvent } from '../models/channel.model';
 import { NotificationReceivedEvent } from '../models/notification.model';
 import { CustomStatusChangedEvent, PresenceChangedEvent } from '../models/presence.model';
 
@@ -34,6 +34,8 @@ export class RealtimeService implements OnDestroy {
   readonly reactionRemoved$      = new Subject<ReactionRemovedEvent>();
   /** This user lost access to a channel (kicked, removed by sprint sync, or left in another tab). */
   readonly channelAccessRevoked$ = new Subject<ChannelAccessRevokedEvent>();
+  /** This user was added to a channel (by a manager or sprint sync) — the mirror of the revoke above. */
+  readonly channelAccessGranted$ = new Subject<ChannelAccessGrantedEvent>();
   /** The current user read a channel in another tab/device — clear its unread badge here too. */
   readonly channelRead$ = new Subject<ChannelReadEvent>();
   /** The other DM participant read up to a point — drives the "Seen" receipt (CF-15). */
@@ -153,6 +155,7 @@ export class RealtimeService implements OnDestroy {
     this.reactionAdded$.complete();
     this.reactionRemoved$.complete();
     this.channelAccessRevoked$.complete();
+    this.channelAccessGranted$.complete();
     this.channelRead$.complete();
     this.readReceipt$.complete();
     this.messagePinChanged$.complete();
@@ -182,6 +185,7 @@ export class RealtimeService implements OnDestroy {
     this.connection.on('reactionAdded',        (e: ReactionAddedEvent)        => this.reactionAdded$.next(e));
     this.connection.on('reactionRemoved',      (e: ReactionRemovedEvent)      => this.reactionRemoved$.next(e));
     this.connection.on('channelAccessRevoked', (e: ChannelAccessRevokedEvent) => this.channelAccessRevoked$.next(e));
+    this.connection.on('channelAccessGranted', (e: ChannelAccessGrantedEvent) => this.channelAccessGranted$.next(e));
     this.connection.on('channelRead',          (e: ChannelReadEvent)          => this.channelRead$.next(e));
     this.connection.on('readReceipt',          (e: ReadReceiptEvent)          => this.readReceipt$.next(e));
     this.connection.on('messagePinChanged',    (e: { messageId: string; channelId: string; isPinned: boolean }) => this.messagePinChanged$.next(e));

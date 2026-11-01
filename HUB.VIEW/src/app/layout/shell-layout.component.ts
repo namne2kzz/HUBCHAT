@@ -694,6 +694,29 @@ export class ShellLayoutComponent implements OnInit {
           return rest;
         });
       });
+
+    // Added to a channel: fetch it and put it in the sidebar straight away. Before this the
+    // channel simply did not appear — a private one was not even visible to fetch — so the user
+    // had no sign they had been added until they reloaded.
+    this.realtime.channelAccessGranted$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(e => {
+        if (this.channels().some(c => c.id === e.channelId)) return;
+
+        this.channelSvc.get(e.channelId)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe({
+            next: channel => {
+              // Re-checked after the round trip: a second event, or the list reloading, may have
+              // added it while this was in flight.
+              if (this.channels().some(c => c.id === channel.id)) return;
+              this.channels.update(cs => [...cs, channel]);
+              this.channelSvc.updateCache(this.channels());
+            },
+            // Nothing to show if it cannot be read; the next full load will pick it up.
+            error: () => { /* ignore */ },
+          });
+      });
   }
 
   /** Records a user typing in a channel and schedules auto-clear after 6s of silence. */

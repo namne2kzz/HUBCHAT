@@ -150,9 +150,7 @@
   color: var(--text-muted);
 }
 
-/* Reactions */
-.bub-reactions    { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
-.bub-reactions-me { justify-content: flex-end; }
+/* Reactions — the full rule lives further down, next to .reaction-chip. */
 
 /* ── Search scroll-to highlight ───────────────────────────────────────── */
 @keyframes bubble-highlight {
@@ -236,7 +234,20 @@
 .bub-unfurls { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; max-width: 100%; }
 .bub-unfurls-me { align-items: flex-end; }
 
-.bub-reactions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
+/* Pulled tight under the bubble and overlapping its lower edge, so a chip reads as something
+   stuck onto the message above it rather than as a separate message containing one emoji —
+   which is how a detached row of chips was being misread. The negative offset is small enough
+   to keep the chips clear of the bubble's own text. */
+.bub-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: -5px;
+  /* Lifted above the bubble so the overlap shows the chips, not the bubble's edge over them. */
+  position: relative;
+  z-index: 1;
+}
 .bub-reactions-me { justify-content: flex-end; }
 .reaction-chip {
   cursor: pointer;

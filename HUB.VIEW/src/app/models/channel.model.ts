@@ -111,3 +111,12 @@ export interface ChannelAccessRevokedEvent {
   /** True when the channel was just made private (lock-down) — the client must close it, not offer "join". */
   nowPrivate?: boolean;
 }
+
+/**
+ * Pushed by realtime-service (ChannelMemberAddedConsumer) to the added user's connections: they are now a
+ * member of the channel. Carries only the id — the client fetches the channel, since the event says a
+ * membership changed, not what the channel currently looks like.
+ */
+export interface ChannelAccessGrantedEvent {
+  channelId: string;
+}

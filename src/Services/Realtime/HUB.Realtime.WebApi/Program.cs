@@ -70,6 +70,8 @@ builder.Services.AddHubMessaging(builder.Configuration, bus =>
     bus.AddConsumer<ChannelReadMarkedConsumer>();
     // Revokes a removed member's live subscription (group + join cache) — see the consumer for why.
     bus.AddConsumer<ChannelMemberRemovedConsumer>();
+    // The mirror: tells a newly added member about the channel so their sidebar updates live.
+    bus.AddConsumer<ChannelMemberAddedConsumer>();
     bus.AddConsumer<ChannelMadePrivateConsumer>();
 });
 

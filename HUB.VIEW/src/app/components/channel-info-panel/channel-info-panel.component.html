@@ -121,6 +121,26 @@
         </button>
       </div>
       @if (changingVisibility()) { <p class="info-owner-note">Updating visibility…</p> }
+
+      <!-- Archive: the handler and the API have always been here; only this control was missing,
+           so the one way to archive was the automatic call made when a linked sprint closes. -->
+      @if (canArchive && !isDm) {
+        <div class="info-section-label">Archive</div>
+        <p class="info-owner-note">
+          @if (channel().isArchived) {
+            This channel is archived and read-only. Reopening lets members post again.
+          } @else {
+            Archiving makes the channel read-only. Its history stays searchable, and you can reopen it later.
+          }
+        </p>
+        <button class="info-leave" [disabled]="archiving()" (click)="toggleArchive()">
+          @if (archiving()) {
+            {{ channel().isArchived ? 'Reopening…' : 'Archiving…' }}
+          } @else {
+            {{ channel().isArchived ? 'Reopen channel' : 'Archive channel' }}
+          }
+        </button>
+      }
     }
 
   </div>
